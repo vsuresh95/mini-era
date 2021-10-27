@@ -418,62 +418,42 @@ status_t init_rad_kernel()
  *  x1 x2 x3 ...   : The message bits (input to decode routine)
  */
 
-status_t init_vit_kernel(char* dict_fn)
+status_t init_vit_kernel()
 {
   DEBUG(printf("In init_vit_kernel...\n"));
   if (vit_msgs_size >= VITERBI_MSG_LENGTHS) {
     printf("ERROR: Specified too large a vit_msgs_size (-v option): %u but max is %u\n", vit_msgs_size, VITERBI_MSG_LENGTHS);
     exit(-1);
   }
-  // Read in the viterbi messages dictionary file
-  FILE *dictF = fopen(dict_fn,"r");
-  if (!dictF)
-  {
-    printf("Error: unable to open viterbi dictionary definition file %s\n", dict_fn);
-    return error;
-  }
 
-  // Read in the trace message dictionary from the trace file
   // Read the number of messages
-  if (fscanf(dictF, "%u\n", &num_viterbi_dictionary_items) != 1) {
-    printf("ERROR reading the number of Viterbi Dictionary items\n");
-    exit(-2);
-  }    
+  num_viterbi_dictionary_items = 16;
   printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items);
-  the_viterbi_trace_dict = (vit_dict_entry_t*)calloc(num_viterbi_dictionary_items, sizeof(vit_dict_entry_t));
-  if (the_viterbi_trace_dict == NULL) 
-  {
-    printf("ERROR : Cannot allocate Viterbi Trace Dictionary memory space\n");
-    fclose(dictF);
-    return error;
-  }
+
+  // VIG the_viterbi_trace_dict = (vit_dict_entry_t*)calloc(num_viterbi_dictionary_items, sizeof(vit_dict_entry_t));
 
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
   {
     printf("  Reading vit dictionary entry %u\n", i);
 
-    int mnum, mid;
-    if (fscanf(dictF, "%d %d\n", &mnum, &mid) != 2) {
-      printf("Error reading viterbi kernel dictionary enry %u header: Message_number and Message_id\n", i);
-      fclose(dictF);
-      exit(-6);
-    }
+    int mnum = mnum_mid[i][0];
+    int mid = mnum_mid[i][1];
     DEBUG(printf(" V_MSG: num %d Id %d\n", mnum, mid));
+
     if (mnum != i) {
       printf("ERROR : Check Viterbi Dictionary : i = %d but Mnum = %d  (Mid = %d)\n", i, mnum, mid);
-      fclose(dictF);
       exit(-5);
     }
+
     the_viterbi_trace_dict[i].msg_num = mnum;
     the_viterbi_trace_dict[i].msg_id = mid;
 
-    int in_bpsc, in_cbps, in_dbps, in_encoding, in_rate; // OFDM PARMS
-    if (fscanf(dictF, "%d %d %d %d %d\n", &in_bpsc, &in_cbps, &in_dbps, &in_encoding, &in_rate) != 5) {
-      printf("Error reading viterbi kernel dictionary entry %u bpsc, cbps, dbps, encoding and rate info\n", i);
-      fclose(dictF);
-      exit(-2);
-    }
+    int in_bpsc = bpsc_cbps_dbps_encoding_rate[i][0];
+    int in_cbps = bpsc_cbps_dbps_encoding_rate[i][1];
+    int in_dbps = bpsc_cbps_dbps_encoding_rate[i][2];
+    int in_encoding = bpsc_cbps_dbps_encoding_rate[i][3];
+    int in_rate = bpsc_cbps_dbps_encoding_rate[i][4];
 
     DEBUG(printf("  OFDM: %d %d %d %d %d\n", in_bpsc, in_cbps, in_dbps, in_encoding, in_rate));
     the_viterbi_trace_dict[i].ofdm_p.encoding   = in_encoding;
@@ -482,12 +462,12 @@ status_t init_vit_kernel(char* dict_fn)
     the_viterbi_trace_dict[i].ofdm_p.n_dbps     = in_dbps;
     the_viterbi_trace_dict[i].ofdm_p.rate_field = in_rate;
 
-    int in_pdsu_size, in_sym, in_pad, in_encoded_bits, in_data_bits;
-    if (fscanf(dictF, "%d %d %d %d %d\n", &in_pdsu_size, &in_sym, &in_pad, &in_encoded_bits, &in_data_bits) != 5) {
-      printf("Error reading viterbi kernel dictionary entry %u psdu num_sym, pad, n_encoded_bits and n_data_bits\n", i);
-      fclose(dictF);
-      exit(-2);
-    }
+    int in_pdsu_size = pdsu_size_sym_pad_encoded_bits_data_bits[i][0];
+    int in_sym = pdsu_size_sym_pad_encoded_bits_data_bits[i][1];
+    int in_pad = pdsu_size_sym_pad_encoded_bits_data_bits[i][2];
+    int in_encoded_bits = pdsu_size_sym_pad_encoded_bits_data_bits[i][3];
+    int in_data_bits = pdsu_size_sym_pad_encoded_bits_data_bits[i][4];
+
     DEBUG(printf("  FRAME: %d %d %d %d %d\n", in_pdsu_size, in_sym, in_pad, in_encoded_bits, in_data_bits));
     the_viterbi_trace_dict[i].frame_p.psdu_size      = in_pdsu_size;
     the_viterbi_trace_dict[i].frame_p.n_sym          = in_sym;
@@ -498,20 +478,13 @@ status_t init_vit_kernel(char* dict_fn)
     int num_in_bits = in_encoded_bits + 10; // strlen(str3)+10; //additional 10 values
     DEBUG(printf("  Reading %u in_bits\n", num_in_bits));
     for (int ci = 0; ci < num_in_bits; ci++) { 
-      unsigned c;
-      if (fscanf(dictF, "%u ", &c) != 1) {
-	printf("Error reading viterbi kernel dictionary entry %u data\n", i);
-	fclose(dictF);
-	exit(-6);
-      }
       #ifdef SUPER_VERBOSE
       printf("%u ", c);
       #endif
-      the_viterbi_trace_dict[i].in_bits[ci] = (uint8_t)c;
+      the_viterbi_trace_dict[i].in_bits[ci] = (uint8_t)in_bits[i][ci];
     }
     DEBUG(printf("\n"));
   }
-  fclose(dictF);
 
   //Clear the messages (injected) histogram
   for (int i = 0; i < VITERBI_MSG_LENGTHS; i++) {
@@ -528,17 +501,9 @@ status_t init_vit_kernel(char* dict_fn)
   init_vit_parameters();
   snprintf(VIT_DEVNAME, 128, "/dev/vitdodec_stratus.%u", use_device_number);
   printf("Open Vit-Do-Decode device %s\n", VIT_DEVNAME);
-  vitHW_fd = open(VIT_DEVNAME, O_RDWR, 0);
-  if(vitHW_fd < 0) {
-	  fprintf(stderr, "Error: cannot open %s", VIT_DEVNAME);
-	  exit(EXIT_FAILURE);
-  }
 
-  vitHW_lmem = contig_alloc(vitHW_size, &vitHW_mem);
-  if (vitHW_lmem == NULL) {
-    fprintf(stderr, "Error: cannot allocate %zu contig bytes", vitHW_size);
-    exit(EXIT_FAILURE);
-  }
+  // VIG vitHW_lmem = contig_alloc(vitHW_size, &vitHW_mem);
+
   vitHW_li_mem = &(vitHW_lmem[0]);
   vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
   printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
@@ -547,7 +512,7 @@ status_t init_vit_kernel(char* dict_fn)
   vitHW_desc.esp.coherence = ACC_COH_NONE;
   vitHW_desc.esp.p2p_store = 0;
   vitHW_desc.esp.p2p_nsrcs = 0;
-  vitHW_desc.esp.contig = contig_to_khandle(vitHW_mem);
+  // VIG vitHW_desc.esp.contig = contig_to_khandle(vitHW_mem);
 
 #endif
 
