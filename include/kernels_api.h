@@ -30,6 +30,8 @@ typedef float distance_t;
 
 #include "calc_fmcw_dist.h"
 
+uint64_t get_counter();
+
 typedef struct {
   unsigned int index;          // A global index (of all radar dictionary entries
   unsigned int set;            // The set this entry is in
@@ -157,7 +159,7 @@ void closeout_trace_reader(void);
 
 /* Kernels initialization */
 status_t init_cv_kernel(char* py_file, char* dict_fn);
-status_t init_rad_kernel(char* dict_fn);
+status_t init_rad_kernel();
 status_t init_vit_kernel(char* dict_fn);
 
 
