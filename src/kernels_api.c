@@ -55,6 +55,20 @@ static unsigned DMA_WORD_PER_BEAT(unsigned _st)
  #include "read_trace.h"
 #endif
 
+uint64_t get_counter() {
+  uint64_t counter;
+  asm volatile (
+    "li t0, 0;"
+    "csrr t0, mcycle;"
+    "mv %0, t0"
+    : "=r" ( counter )
+    :
+    : "t0"
+  );
+
+  return counter;
+}
+
 extern unsigned time_step;
 
 unsigned use_device_number = 0; // Default to /dev/*_stratus.0
@@ -237,7 +251,7 @@ const float FFT_ERR_TH = 0.05;
 /* User-defined code */
 static void init_fft_parameters()
 {
-	int len = 0x1<<14;
+	int len = 0x1 << fft_logn_samples;
 	if (DMA_WORD_PER_BEAT(sizeof(fftHW_token_t)) == 0) {
 		fftHW_in_words_adj  = 2 * len;
 		fftHW_out_words_adj = 2 * len;
@@ -256,107 +270,75 @@ static void init_fft_parameters()
 
 extern void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg);
 
-
-
-
-status_t init_rad_kernel(char* dict_fn)
+status_t init_rad_kernel()
 {
   DEBUG(printf("In init_rad_kernel...\n"));
 
   init_calculate_peak_dist(fft_logn_samples);
 
-  // Read in the radar distances dictionary file
-  FILE *dictF = fopen(dict_fn,"r");
-  if (!dictF)
-  {
-    printf("Error: unable to open dictionary file %s\n", dict_fn);
-    fclose(dictF);
-    return error;
-  }
-  // Read the number of definitions
-  if (fscanf(dictF, "%u %u\n", &num_radar_samples_sets, &radar_dict_items_per_set) != 2) {
-    printf("ERROR reading the number of Radar Dictionary sets and items per set\n");
-    exit(-2);
-  }
+  // hardcoded based on norm_radar_01_dictionary.h
+  num_radar_samples_sets = 1;
+  radar_dict_items_per_set = 12;
+
   printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set);
-  the_radar_return_dict = (radar_dict_entry_t**)calloc(num_radar_samples_sets, sizeof(radar_dict_entry_t*));
-  if (the_radar_return_dict == NULL) {
-    printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
-    fclose(dictF);
-    return error;
-  }
-  for (int si = 0; si < num_radar_samples_sets; si++) {
-    the_radar_return_dict[si] = (radar_dict_entry_t*)calloc(radar_dict_items_per_set, sizeof(radar_dict_entry_t));
-    if (the_radar_return_dict[si] == NULL) {
-      printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
-    fclose(dictF);
-      return error;
-    }
-  }
+
+  // VIG the_radar_return_dict = (radar_dict_entry_t**)calloc(num_radar_samples_sets, sizeof(radar_dict_entry_t*));
+
+  // VIG for (int si = 0; si < num_radar_samples_sets; si++) {
+  // VIG   the_radar_return_dict[si] = (radar_dict_entry_t*)calloc(radar_dict_items_per_set, sizeof(radar_dict_entry_t));
+  // VIG }
+  
   unsigned tot_dict_values = 0;
   unsigned tot_index = 0;
+
   for (int si = 0; si < num_radar_samples_sets; si++) {
-    if (fscanf(dictF, "%u\n", &(radar_log_nsamples_per_dict_set[si])) != 1) {
-      printf("ERROR reading the number of Radar Dictionary samples for set %u\n", si);
-      exit(-2);
-    }
+    radar_log_nsamples_per_dict_set[si] = 10;
     DEBUG(printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]));
+
     for (int di = 0; di < radar_dict_items_per_set; di++) {
       unsigned entry_id;
       unsigned entry_log_nsamples;
       float entry_dist;
       unsigned entry_dict_values = 0;
-      if (fscanf(dictF, "%u %u %f", &entry_id, &entry_log_nsamples, &entry_dist) != 3) {
-	printf("ERROR reading Radar Dictionary set %u entry %u header\n", si, di);
-	exit(-2);
-      }
+
+      entry_id = 0;
+      entry_log_nsamples = 10;
+      entry_dist = 1.0;
+
       if (radar_log_nsamples_per_dict_set[si] != entry_log_nsamples) {
-	printf("ERROR reading Radar Dictionary set %u entry %u header : Mismatch in log2 samples : %u vs %u\n", si, di, entry_log_nsamples, radar_log_nsamples_per_dict_set[si]);
-	exit(-2);
+	      printf("ERROR reading Radar Dictionary set %u entry %u header : Mismatch in log2 samples : %u vs %u\n", si, di, entry_log_nsamples, radar_log_nsamples_per_dict_set[si]);
+	      exit(-2);
       }
 	
       printf("  Reading rad dictionary set %u entry %u : %u %u %f\n", si, di, entry_id, entry_log_nsamples, entry_dist);
+
       the_radar_return_dict[si][di].index = tot_index++;  // Set, and increment total index
       the_radar_return_dict[si][di].set = si;
       the_radar_return_dict[si][di].index_in_set = di;
       the_radar_return_dict[si][di].return_id = entry_id;
       the_radar_return_dict[si][di].log_nsamples = entry_log_nsamples;
       the_radar_return_dict[si][di].distance =  entry_dist;
+
       for (int i = 0; i < 2*(1<<entry_log_nsamples); i++) {
-	float fin;
-	if (fscanf(dictF, "%f", &fin) != 1) {
-	  printf("ERROR reading Radar Dictionary set %u entry %u data entries\n", si, di);
-	  exit(-2);
-	}
-	the_radar_return_dict[si][di].return_data[i] = fin;
-	tot_dict_values++;
-	entry_dict_values++;
+	      the_radar_return_dict[si][di].return_data[i] = norm_radar_01k[i];
+	      tot_dict_values++;
+	      entry_dict_values++;
       }
+
       DEBUG(printf("    Read in dict set %u entry %u with %u total values\n", si, di, entry_dict_values));
     } // for (int di across radar dictionary entries per set
+
     DEBUG(printf("   Done reading in Radar dictionary set %u\n", si));
   } // for (si across radar dictionary sets)
+
   DEBUG(printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values));
-  if (!feof(dictF)) {
-    printf("NOTE: Did not hit eof on the radar dictionary file %s\n", dict_fn);
-    while(!feof(dictF)) {
-      char c;
-      if (fscanf(dictF, "%c", &c) != 1) {
-	printf("Couldn't read final character\n");
-      } else {
-	printf("Next char is %c = %u = 0x%x\n", c, c, c);
-      }
-    }
-    //if (!feof(dictF)) { printf("and still no EOF\n"); } 
-  }
-  fclose(dictF);
 
   // Initialize hist_pct_errs values
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
       hist_distances[si][di] = 0;
       for (int i = 0; i < 5; i++) {
-	hist_pct_errs[si][di][i] = 0;
+	      hist_pct_errs[si][di][i] = 0;
       }
     }
   }
@@ -389,18 +371,9 @@ status_t init_rad_kernel(char* dict_fn)
   #endif /* FFT_FX_WIDTH */
   printf(" #define FX_IL %u\n", FX_IL);
 
-  fftHW_fd = open(FFT_DEVNAME, O_RDWR, 0);
-  if (fftHW_fd < 0) {
-    fprintf(stderr, "Error: cannot open %s", FFT_DEVNAME);
-    exit(EXIT_FAILURE);
-  }
-
   printf("Allocate hardware buffer of size %zu\n", fftHW_size);
-  fftHW_lmem = contig_alloc(fftHW_size, &fftHW_mem);
-  if (fftHW_lmem == NULL) {
-    fprintf(stderr, "Error: cannot allocate %zu contig bytes", fftHW_size);
-    exit(EXIT_FAILURE);
-  }
+
+  // VIG fftHW_lmem = contig_alloc(fftHW_size, &fftHW_mem);
 
   fftHW_li_mem = &(fftHW_lmem[0]);
   fftHW_lo_mem = &(fftHW_lmem[fftHW_out_offset]);
@@ -410,8 +383,8 @@ status_t init_rad_kernel(char* dict_fn)
   fftHW_desc.esp.coherence = ACC_COH_NONE;
   fftHW_desc.esp.p2p_store = 0;
   fftHW_desc.esp.p2p_nsrcs = 0;
-  //fftHW_desc.esp.p2p_srcs = {"", "", "", ""};
-  fftHW_desc.esp.contig = contig_to_khandle(fftHW_mem);
+  // VIG fftHW_desc.esp.p2p_srcs = {"", "", "", ""};
+  // VIG fftHW_desc.esp.contig = contig_to_khandle(fftHW_mem);
 
  #if (USE_FFT_ACCEL_TYPE == 1) // fft_stratus
   #ifdef HW_FFT_BITREV
@@ -419,7 +392,7 @@ status_t init_rad_kernel(char* dict_fn)
   #else
   fftHW_desc.do_bitrev  = FFTHW_NO_BITREV;
   #endif
-  //fftHW_desc.len      = fftHW_len;
+  // VIG fftHW_desc.len      = fftHW_len;
   fftHW_desc.log_len    = fft_logn_samples; // fftHW_log_len;
  #elif (USE_FFT_ACCEL_TYPE == 2) // fft2_stratus
   fftHW_desc.scale_factor = 0;
@@ -435,7 +408,6 @@ status_t init_rad_kernel(char* dict_fn)
 
   return success;
 }
-
 
 /* This is the initialization of the Viterbi dictionary data, etc.
  * The format is:
