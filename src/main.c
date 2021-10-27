@@ -95,6 +95,11 @@ int main(int argc, char *argv[])
   // hardcoded for 100 trace samples
   for (int i = 0; i < 100; i++)
   {
+    if (!read_next_trace_record(vehicle_state))
+    {
+      break;
+    }
+    
     DEBUG(printf("Vehicle_State: Lane %u %s Speed %.1f\n", vehicle_state.lane, lane_names[vehicle_state.lane], vehicle_state.speed));
 
     /* The computer vision kernel performs object recognition on the

@@ -21,9 +21,6 @@
 #include "kernels_api.h"
 #include "sim_environs.h"
 
-/* File pointer to the input trace */
-FILE *input_trace = NULL;
-
 /* These are globals for the trace read parsing routines */
 #define MAX_TR_LINE_SZ   256
 
@@ -35,29 +32,12 @@ int in_lane = 0;
 extern unsigned time_step;         // The number of elapsed time steps
 extern unsigned max_time_steps;    // The max time steps to simulate (default to 5000)
 
-status_t init_trace_reader(char* trace_filename)
-{
-  DEBUG(printf("In init_trace_reader...\n"));
-  /* Now open the mini-ERA trace */
-  input_trace = fopen(trace_filename,"r");
-  if (!input_trace)
-  {
-    printf("Error: unable to open trace file %s\n", trace_filename);
-    return error;
-  }
-
-  return success;
-}
-
 void
-get_object_token(char c)
+get_object_token(char obj)
 {
-  //DEBUG(printf("  get_object_token TK %u c %c last_i %u for %s\n", in_tok, c, last_i, &in_line_buf[last_i]));
   if (in_tok == 0) { // 0 => the object character
-    char objc; 
-    sscanf(&in_line_buf[last_i], "%c", &objc);
+    char objc = obj;
     lane_obj[in_lane][obj_in_lane[in_lane]] = objc;
-    //if (obj_in_lane[in_lane] == 0) { // LAST is nearest -- but should be safer than that!
     nearest_obj[in_lane] = objc;
     if (objc != 'N') {
       total_obj++;
@@ -72,14 +52,11 @@ get_object_token(char c)
 }
 
 void
-get_distance_token(char c)
+get_distance_token(unsigned dist)
 {
-  //DEBUG(printf("  get_distance_token TK %u c %c last_i %u for %s\n", in_tok, c, last_i, &in_line_buf[last_i]));
   if (in_tok == 1) { // 0 => the distance value
-    unsigned distv;
-    sscanf(&in_line_buf[last_i], "%u", &distv);
+    unsigned distv = dist;
     lane_dist[in_lane][obj_in_lane[in_lane]] = distv;
-    //if (obj_in_lane[in_lane] == 0) {
     nearest_dist[in_lane] = distv;
     obj_in_lane[in_lane]++;
   } else { // a distance
@@ -91,15 +68,10 @@ get_distance_token(char c)
   in_tok = 1 - in_tok; // Flip to expect object char token
 }
 
-
 bool_t read_next_trace_record(vehicle_state_t vs)
 {
   DEBUG(printf("In read_next_trace_record\n"));
-  if (feof(input_trace)) { 
-    //printf("ERROR : invocation of read_next_trace_record indicates feof\n");
-    //exit(-1);
-    return false;
-  }
+
   if (time_step == max_time_steps) {
     return false;
   }
@@ -111,60 +83,17 @@ bool_t read_next_trace_record(vehicle_state_t vs)
     nearest_dist[i] = INF_DISTANCE;
   }
   
-  /* 1) Read the next entry (line, epoch) from the trace */
-  void* fres = fgets(in_line_buf, MAX_TR_LINE_SZ, input_trace);
-  if (fres == NULL) { // If fgets returns NULL then we hit EOF
-    printf(" FGETS returned NULL - feof = %u\n", feof(input_trace));
-    return false; // Indicate we didn't read from the trace (EOF)
-  }
-  
-  if ((strlen(in_line_buf) > 0) &&
-      (in_line_buf[strlen (in_line_buf) - 1] == '\n')) {
-    in_line_buf[strlen (in_line_buf) - 1] = '\0';
-  }
-  DEBUG(printf("IN_LINE : %s\n", in_line_buf));
-  if (output_viz_trace) {
-    if (!vs.active) {
-      printf(" %4u VizTrace: %d,%s\n", time_step, -vs.lane, in_line_buf);
-    } else {
-      printf(" %4u VizTrace: %d,%s\n", time_step, vs.lane, in_line_buf);
-    }      
-  }
-
   last_i = 0;
   in_tok = 0;
   in_lane = 1;
-  for (int i = 0; i < 256; i++) { // Scan the input line
-    // Find the token seperators
-    char c = in_line_buf[i];
-    //DEBUG(printf("TR_CHAR '%c'\n", c));
-    switch(c) {
-    case ':':
-      in_line_buf[i] = '\0';
-      get_object_token(c);
-      last_i = i+1;
-      break;
-    case ',':
-      in_line_buf[i] = '\0';
-      get_distance_token(c);
-      last_i = i+1;
-      in_lane++;
-      break;
-    case ' ':
-      in_line_buf[i] = '\0';
-      get_distance_token(c);
-      last_i = i+1;
-      break;
-    case '\0':
-    case '\n':
-      in_line_buf[i] = '\0';
-      get_distance_token(c);
-      last_i = i+1;
-      i = 256;
-      break;
-    }
-  }
+  for (int i = 0; i < 3; i++) { // Scan the input line
+    // Find the object tokens
+    char obj = tt00_char[time_step][i];
+    get_object_token(obj);
 
+    unsigned dist = tt00_val[time_step][i];
+    get_distance_token(dist);
+  }
 
 #ifdef SUPER_VERBOSE
   for (int i = 1; i < (NUM_LANES-1); i++) {
@@ -184,16 +113,3 @@ bool_t read_next_trace_record(vehicle_state_t vs)
 #endif
   return true;
 }
-
-bool_t eof_trace_reader()
-{
-  bool_t res = feof(input_trace);
-  DEBUG(printf("In eof_trace_reader feof = %u\n", res));
-  return res;
-}
-
-void closeout_trace_reader()
-{
-  fclose(input_trace);
-}
-
