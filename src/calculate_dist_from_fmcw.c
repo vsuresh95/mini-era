@@ -131,10 +131,7 @@ static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *m
 {
   //contig_copy_to(*mem, 0, inMemory, size);
 
-  if (ioctl(*fd, FFTHW_IOC_ACCESS, *desc)) {
-    perror("IOCTL:");
-    exit(EXIT_FAILURE);
-  }
+  // invoke hardware accelerator here
 
   //contig_copy_from(inMemory, *mem, 0, out_size);
 }
