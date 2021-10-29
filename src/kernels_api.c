@@ -843,10 +843,10 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
       unsigned nd_1 = RADAR_BUCKET_DISTANCE * (unsigned)(nearest_dist[1] / RADAR_BUCKET_DISTANCE); // floor by bucket...
       DEBUG(printf("  Lane %u : obj in %u is %c at %u\n", vs.lane, vs.lane+1, nearest_obj[vs.lane+1], nd_1));
       if ((nearest_obj[1] != 'N') && (nd_1 < VIT_CLEAR_THRESHOLD)) {  
-	// Some object is in the left lane within threshold distance
-	tr_val = 3; // Unsafe to move from lhazard lane into the left lane 
+	      // Some object is in the left lane within threshold distance
+	      tr_val = 3; // Unsafe to move from lhazard lane into the left lane 
       } else {
-	tr_val = 1;
+	      tr_val = 1;
       }
     }
     break;
@@ -861,14 +861,14 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
 		   vs.lane-1, nearest_obj[vs.lane-1], nearest_dist[vs.lane-1],
 		   vs.lane+1, nearest_obj[vs.lane+1], nearest_dist[vs.lane+1]));
       if ((nearest_obj[vs.lane-1] != 'N') && (ndm1 < VIT_CLEAR_THRESHOLD)) {
-	// Some object is in the Left lane at distance 0 or 1
-	DEBUG(printf("    Marking unsafe to move left\n"));
-	tr_val += 1; // Unsafe to move from this lane to the left.
+	      // Some object is in the Left lane at distance 0 or 1
+	      DEBUG(printf("    Marking unsafe to move left\n"));
+	      tr_val += 1; // Unsafe to move from this lane to the left.
       }
       if ((nearest_obj[vs.lane+1] != 'N') && (ndp1 < VIT_CLEAR_THRESHOLD)) {
-	// Some object is in the Right lane at distance 0 or 1
-	DEBUG(printf("    Marking unsafe to move right\n"));
-	tr_val += 2; // Unsafe to move from this lane to the right.
+	      // Some object is in the Right lane at distance 0 or 1
+	      DEBUG(printf("    Marking unsafe to move right\n"));
+	      tr_val += 2; // Unsafe to move from this lane to the right.
       }
     }
     break;
@@ -877,10 +877,10 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
       unsigned nd_3 = RADAR_BUCKET_DISTANCE * (unsigned)(nearest_dist[3] / RADAR_BUCKET_DISTANCE); // floor by bucket...
       DEBUG(printf("  Lane %u : obj in %u is %c at %u\n", vs.lane, vs.lane-1, nearest_obj[vs.lane-1], nd_3));
       if ((nearest_obj[3] != 'N') && (nd_3 < VIT_CLEAR_THRESHOLD)) {
-	// Some object is in the right lane within threshold distance
-	tr_val = 3; // Unsafe to move from center lane to the right.
+	      // Some object is in the right lane within threshold distance
+	      tr_val = 3; // Unsafe to move from center lane to the right.
       } else {
-	tr_val = 2;
+	      tr_val = 2;
       }
     }
     break;

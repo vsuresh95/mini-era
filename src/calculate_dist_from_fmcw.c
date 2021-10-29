@@ -139,9 +139,7 @@ static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *m
 
 float calculate_peak_dist_from_fmcw(float* data)
 {
- #ifdef INT_TIME
-  gettimeofday(&calc_start, NULL);
- #endif
+  calc_start = get_counter();
 
 #ifdef HW_FFT
  #ifndef HW_FFT_BITREV
@@ -149,13 +147,10 @@ float calculate_peak_dist_from_fmcw(float* data)
   //fft_bit_reverse(data, fftHW_len, fftHW_log_len);
   fft_bit_reverse(data, RADAR_N, RADAR_LOGN);
  #endif // HW_FFT
- #ifdef INT_TIME
-  gettimeofday(&fft_br_stop, NULL);
-  fft_br_sec  += fft_br_stop.tv_sec  - calc_start.tv_sec;
-  fft_br_usec += fft_br_stop.tv_usec - calc_start.tv_usec;
 
-  gettimeofday(&fft_cvtin_start, NULL);
- #endif // INT_TIME
+  fft_br_stop = get_counter();
+
+  fft_cvtin_start = get_counter();
 
   // convert input to fixed point
   //for (int j = 0; j < 2 * fftHW_len; j++) {
@@ -166,20 +161,15 @@ float calculate_peak_dist_from_fmcw(float* data)
 	    printf("FFT_IN_DATA %u : %f\n", j, data[j]);
       });
   }
- #ifdef INT_TIME
-  gettimeofday(&fft_cvtin_stop, NULL);
-  fft_cvtin_sec  += fft_cvtin_stop.tv_sec  - fft_cvtin_start.tv_sec;
-  fft_cvtin_usec += fft_cvtin_stop.tv_usec - fft_cvtin_start.tv_usec;
 
-  gettimeofday(&fft_start, NULL);
- #endif // INT_TIME
+  fft_cvtin_stop = get_counter();
+
+  fft_start = get_counter();
   fft_in_hw(&fftHW_fd, &fftHW_desc);
- #ifdef INT_TIME
-  gettimeofday(&fft_stop, NULL);
-  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
-  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
-  gettimeofday(&fft_cvtout_start, NULL);
- #endif // INT_TIME
+  fft_stop = get_counter();
+
+  fft_cvtout_start = get_counter();
+
   //for (int j = 0; j < 2 * fftHW_len; j++) {
   for (int j = 0; j < 2 * RADAR_N; j++) {
     data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
@@ -188,43 +178,40 @@ float calculate_peak_dist_from_fmcw(float* data)
 	    printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
       });
   }
- #ifdef INT_TIME
-  gettimeofday(&fft_cvtout_stop, NULL);
-  fft_cvtout_sec  += fft_cvtout_stop.tv_sec  - fft_cvtout_start.tv_sec;
-  fft_cvtout_usec += fft_cvtout_stop.tv_usec - fft_cvtout_start.tv_usec;
- #endif // INT_TIME
+
+  fft_cvtout_stop = get_counter();
+
 #else // if HW_FFT
- #ifdef INT_TIME
-  gettimeofday(&fft_start, NULL);
- #endif // INT_TIME
+
+  fft_start = get_counter();
+
   SDEBUG(for (int tj = 0; tj < 64; tj++) {
 	  printf("FFT_IN_DATA %u : %f\n", tj, data[tj]);
     });
+
   fft(data, RADAR_N, RADAR_LOGN, -1);
+
   SDEBUG(for (int tj = 0; tj < 64; tj++) {
 	  printf("FFT_OUT_DATA %u : %f\n", tj, data[tj]);
     });
+
   /* for (int j = 0; j < 2 * RADAR_N; j++) { */
   /*   printf("%u,%f\n", j, data[j]); */
   /* } */
- #ifdef INT_TIME
-  gettimeofday(&fft_stop, NULL);
-  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
-  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
- #endif // INT_TIME
+
+  fft_stop = get_counter();
+
 #endif // if HW_FFT
 
- #ifdef INT_TIME
-  gettimeofday(&calc_stop, NULL);
-  calc_sec  += calc_stop.tv_sec  - calc_start.tv_sec;
-  calc_usec += calc_stop.tv_usec - calc_start.tv_usec;
+  calc_stop = get_counter();
 
-  gettimeofday(&cdfmcw_start, NULL);
- #endif // INT_TIME
+  cdfmcw_start = get_counter();
+
   float max_psd = 0;
   unsigned int max_index = 0;
   unsigned int i;
   float temp;
+
   for (i=0; i < RADAR_N; i++) {
     temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
     if (temp > max_psd) {
@@ -232,14 +219,13 @@ float calculate_peak_dist_from_fmcw(float* data)
       max_index = i;
     }
   }
+
   float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
   //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
- #ifdef INT_TIME
-  gettimeofday(&cdfmcw_stop, NULL);
-  cdfmcw_sec  += cdfmcw_stop.tv_sec  - cdfmcw_start.tv_sec;
-  cdfmcw_usec += cdfmcw_stop.tv_usec - cdfmcw_start.tv_usec;
- #endif // INT_TIME
+
+  cdfmcw_stop = get_counter();
   //printf("max_psd = %f  vs %f\n", max_psd, 1e-10*pow(8192,2));
+
   if (max_psd > RADAR_psd_threshold) {
     return distance;
   } else {
