@@ -15,10 +15,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* File pointer to the input trace */
-extern FILE *input_trace;
-
-
 status_t init_trace_reader(char* trace_filename);
 bool_t read_next_trace_record(vehicle_state_t vs);
 bool_t eof_trace_reader();

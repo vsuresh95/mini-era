@@ -129,11 +129,50 @@ void fft_bit_reverse(float *w, unsigned int n, unsigned int bits)
 
 static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *mem, size_t size, size_t out_size,*/ struct fftHW_access *desc)
 {
-  //contig_copy_to(*mem, 0, inMemory, size);
+  #if 0
+	// Configure Spandex request types
+#if (SPANDEX_MODE > 1)
+	spandex_config_t spandex_config;
+	spandex_config.spandex_reg = 0;
+#if (SPANDEX_MODE == 2)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 1;
+#elif (SPANDEX_MODE == 3)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_type = 1;
+#elif (SPANDEX_MODE == 4)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_op = 1;
+	spandex_config.w_type = 1;
+#endif
+	iowrite32(dev, SPANDEX_REG, spandex_config.spandex_reg);
+#endif
 
-  // invoke hardware accelerator here
+	iowrite32(dev, COHERENCE_REG, fftHW_desc.esp.coherence);
+	iowrite32(dev, FFT_DO_PEAK_REG, 0);
+	iowrite32(dev, FFT_DO_BITREV_REG, fftHW_desc.do_bitrev);
+	iowrite32(dev, FFT_LOG_LEN_REG, fftHW_desc.log_len);
+	iowrite32(dev, SRC_OFFSET_REG, 0);
+	iowrite32(dev, DST_OFFSET_REG, in_size);
 
-  //contig_copy_from(inMemory, *mem, 0, out_size);
+	// Start accelerators
+	iowrite32(dev, CMD_REG, CMD_MASK_START);
+
+	load_aq();
+
+	// Wait for completion
+	done = 0;
+	while (!done) {
+		done = ioread32(dev, STATUS_REG);
+		done &= STATUS_MASK_DONE;
+	}
+
+	iowrite32(dev, CMD_REG, 0x0);
+  #endif
 }
 #endif // HW_FFT
 

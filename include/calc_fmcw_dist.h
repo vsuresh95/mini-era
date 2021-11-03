@@ -15,24 +15,4 @@ extern float    RADAR_alpha; // Chirp rate (saw-tooth)
 extern void  init_calculate_peak_dist();
 extern float calculate_peak_dist_from_fmcw(float* data);
 
-#ifdef INT_TIME
-extern uint64_t calc_sec;
-extern uint64_t calc_usec;
-
-extern uint64_t fft_sec;
-extern uint64_t fft_usec;
-
-extern uint64_t fft_br_sec;
-extern uint64_t fft_br_usec;
-
-extern uint64_t fft_cvtin_sec;
-extern uint64_t fft_cvtin_usec;
-
-extern uint64_t fft_cvtout_sec;
-extern uint64_t fft_cvtout_usec;
-
-extern uint64_t cdfmcw_sec;
-extern uint64_t cdfmcw_usec;
-#endif
-
 #endif

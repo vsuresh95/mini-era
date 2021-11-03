@@ -16,14 +16,10 @@
  */
 
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <string.h>
 
 #include "kernels_api.h"
-#include "sim_environs.h"
-#include "getopt.h"
 
 #if 1
 #define DEBUG(x) x
@@ -61,8 +57,6 @@ int main(int argc, char *argv[])
   printf("Using viterbi messages per step behavior %u = %s\n", vit_msgs_per_step, vit_msgs_per_step_str[vit_msgs_per_step]);
 
   printf("Doing initialization tasks...\n");
-
-  // initialize trace reader
 
   // initialize radar kernel - set up buffer
   printf("Initializing the Radar kernel...\n");

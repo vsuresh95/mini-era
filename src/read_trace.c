@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "kernels_api.h"
-#include "sim_environs.h"
 
 /* These are globals for the trace read parsing routines */
 #define MAX_TR_LINE_SZ   256

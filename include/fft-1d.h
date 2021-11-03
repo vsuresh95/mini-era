@@ -77,9 +77,4 @@
 int write_array_to_octave (float * data, unsigned int len, char * filename, char * name);
 int fft (float * data, unsigned int N, unsigned int logn, int sign);
 
-#ifdef INT_TIME
-extern uint64_t bitrev_sec;
-extern uint64_t bitrev_usec;
-#endif
-
 #endif /* _TAV_1D_FFT_ */
