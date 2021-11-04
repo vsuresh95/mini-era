@@ -29,8 +29,7 @@ typedef float distance_t;
 /* These are some top-level defines for the dictionaries */
 
 #include "calc_fmcw_dist.h"
-
-uint64_t get_counter();
+#include "get_counter.h"
 
 typedef struct {
   unsigned int index;          // A global index (of all radar dictionary entries

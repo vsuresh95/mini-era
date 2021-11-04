@@ -2,38 +2,25 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
 
 #include "verbose.h"
 #include "fft-1d.h"
 
 #include "calc_fmcw_dist.h"
 
-#ifdef INT_TIME
-struct timeval calc_start, calc_stop;
-uint64_t calc_sec  = 0LL;
-uint64_t calc_usec = 0LL;
-
-struct timeval fft_stop, fft_start;
-uint64_t fft_sec  = 0LL;
-uint64_t fft_usec = 0LL;
-
-struct timeval fft_br_stop, fft_br_start;
-uint64_t fft_br_sec  = 0LL;
-uint64_t fft_br_usec = 0LL;
-
-struct timeval fft_cvtin_stop, fft_cvtin_start;
-uint64_t fft_cvtin_sec  = 0LL;
-uint64_t fft_cvtin_usec = 0LL;
-
-struct timeval fft_cvtout_stop, fft_cvtout_start;
-uint64_t fft_cvtout_sec  = 0LL;
-uint64_t fft_cvtout_usec = 0LL;
-
-struct timeval cdfmcw_stop, cdfmcw_start;
-uint64_t cdfmcw_sec  = 0LL;
-uint64_t cdfmcw_usec = 0LL;
-#endif
+uint64_t calc_start;
+uint64_t fft_br_stop;
+uint64_t fft_cvtin_start;
+uint64_t fft_cvtin_stop;
+uint64_t fft_start;
+uint64_t fft_stop;
+uint64_t fft_cvtout_start;
+uint64_t fft_cvtout_stop;
+uint64_t fft_start;
+uint64_t fft_stop;
+uint64_t calc_stop;
+uint64_t cdfmcw_start;
+uint64_t cdfmcw_stop;
 
 unsigned RADAR_LOGN    = 0;   // Log2 of the number of samples
 unsigned RADAR_N       = 0;   // The number of samples (2^LOGN)

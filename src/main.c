@@ -28,6 +28,19 @@
 #endif
 
 uint64_t start_prog;
+uint64_t start_iter_cv;
+uint64_t stop_iter_cv;
+uint64_t start_iter_rad;
+uint64_t stop_iter_rad;
+uint64_t start_iter_vit;
+uint64_t stop_iter_vit;
+uint64_t start_exec_cv;
+uint64_t stop_exec_cv;
+uint64_t start_exec_rad;
+uint64_t stop_exec_rad;
+uint64_t start_exec_vit;
+uint64_t stop_exec_vit;
+uint64_t stop_prog;
 
 extern unsigned use_device_number;
 
