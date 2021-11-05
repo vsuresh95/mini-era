@@ -96,7 +96,7 @@ uint8_t* depuncture(uint8_t *in) {
   int count;
   int n_cbps = d_ofdm->n_cbps;
   uint8_t *depunctured;
-  //printf("Depunture call...\n");
+  //DEBUG(printf("Depunture call...\n"));
   if (d_ntraceback == 5) {
     count = d_frame->n_sym * n_cbps;
     depunctured = in;
@@ -121,7 +121,7 @@ uint8_t* depuncture(uint8_t *in) {
       }
     }
   }
-  //printf("  depuncture count = %u\n", count);
+  //DEBUG(printf("  depuncture count = %u\n", count));
   return depunctured;
 }
 
@@ -188,74 +188,74 @@ uint8_t* do_decoding(int in_cbps, int in_ntraceback, const unsigned char* in_dep
 #endif
 
   DO_VERBOSE({
-      printf("\nVBS: in_cbps        = %u\n", in_cbps);
-      printf("VBS: in_ntraceback  = %u\n", in_ntraceback);
-      printf("VBS: in_n_data_bits = %u\n", in_n_data_bits);
+      DEBUG(printf("\nVBS: in_cbps        = %u\n", in_cbps));
+      DEBUG(printf("VBS: in_ntraceback  = %u\n", in_ntraceback));
+      DEBUG(printf("VBS: in_n_data_bits = %u\n", in_n_data_bits));
       for (int ti = 0; ti < 2; ti ++) {
-	printf("d_brtab[%u] = [ ", ti);
+	DEBUG(printf("d_brtab[%u] = [ ", ti));
 	for (int tj = 0; tj < 32; tj++) {
-	  if (tj > 0) { printf(", "); }
-	  printf("%u", d_brtab27[ti][tj]);
+	  if (tj > 0) { DEBUG(printf(", ")); }
+	  DEBUG(printf("%u", d_brtab27[ti][tj]));
 	}
-	printf(" ]\n");
+	DEBUG(printf(" ]\n"));
       }
-      printf("VBS: in_depuncture_pattern = [ ");
+      DEBUG(printf("VBS: in_depuncture_pattern = [ "));
       for (int ti = 0; ti < 6; ti ++) {
-	if (ti > 0) { printf(", "); }
-	printf("%02x", in_depuncture_pattern[ti]);
+	if (ti > 0) { DEBUG(printf(", ")); }
+	DEBUG(printf("%02x", in_depuncture_pattern[ti]));
       }
-      printf("]\n");
-      printf("\nVBS: depd_data : %p\n", depd_data);
+      DEBUG(printf("]\n"));
+      DEBUG(printf("\nVBS: depd_data : %p\n", depd_data));
       {
 	int per_row = 0;
-	printf("%p : ", &depd_data[0]);
+	DEBUG(printf("%p : ", &depd_data[0]));
 	for (int ti = 0; ti < MAX_ENCODED_BITS; ti++) {
 	  per_row++;
 	  if ((per_row % 8) == 0) {
-	    printf(" ");
+	    DEBUG(printf(" "));
 	  }
-	  printf("%u", depd_data[ti]);
+	  DEBUG(printf("%u", depd_data[ti]));
 	  if (per_row == 39) {
-	    printf("\n");
-	    printf("%p : ", &depd_data[ti]);
+	    DEBUG(printf("\n"));
+	    DEBUG(printf("%p : ", &depd_data[ti]));
 	    per_row = 0;
 	  }
 	}
-	printf("\n");
+	DEBUG(printf("\n"));
       }
       /* for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) { */
-      /* 	if (ti > 0) { printf(", "); } */
-      /* 	if ((ti > 0) && ((ti % 8) == 0)) { printf("  "); } */
-      /* 	if ((ti > 0) && ((ti % 40) == 0)) { printf("\n"); } */
-      /* 	printf("%02x", depd_data[ti]); */
+      /* 	if (ti > 0) { DEBUG(printf(", ")); } */
+      /* 	if ((ti > 0) && ((ti % 8) == 0)) { DEBUG(printf("  ")); } */
+      /* 	if ((ti > 0) && ((ti % 40) == 0)) { DEBUG(printf("\n")); } */
+      /* 	DEBUG(printf("%02x", depd_data[ti])); */
       /* } */
-      printf("\n");
+      DEBUG(printf("\n"));
       /** This is always ZERO
-      printf("\nVBS: l_decoded : %p\n", l_decoded);
+      DEBUG(printf("\nVBS: l_decoded : %p\n", l_decoded));
       {
 	int per_row = 0;
-	printf("%p : ", &l_decoded[0]);
+	DEBUG(printf("%p : ", &l_decoded[0]));
 	for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
 	  per_row++;
 	  if ((per_row % 8) == 0) {
-	    printf(" ");
+	    DEBUG(printf(" "));
 	  }
-	  printf("%u", l_decoded[ti]);
+	  DEBUG(printf("%u", l_decoded[ti]));
 	  if (per_row == 39) {
-	    printf("\n");
-	    printf("%p : ", &l_decoded[ti]);
+	    DEBUG(printf("\n"));
+	    DEBUG(printf("%p : ", &l_decoded[ti]));
 	    per_row = 0;
 	  }
 	}
-	printf("\n");
+	DEBUG(printf("\n"));
 	}**/
       /* for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) { */
-      /* 	if (ti > 0) { printf(", "); } */
-      /* 	if ((ti > 0) && ((ti % 8) == 0)) { printf("  "); } */
-      /* 	if ((ti > 0) && ((ti % 40) == 0)) { printf("\n"); } */
-      /* 	printf("%02x", l_decoded[ti]); */
+      /* 	if (ti > 0) { DEBUG(printf(", ")); } */
+      /* 	if ((ti > 0) && ((ti % 8) == 0)) { DEBUG(printf("  ")); } */
+      /* 	if ((ti > 0) && ((ti % 40) == 0)) { DEBUG(printf("\n")); } */
+      /* 	DEBUG(printf("%02x", l_decoded[ti])); */
       /* } */
-      printf("\n\n");
+      DEBUG(printf("\n\n"));
     });      
 
 
@@ -284,9 +284,9 @@ uint8_t* do_decoding(int in_cbps, int in_ntraceback, const unsigned char* in_dep
   int viterbi_butterfly_calls = 0;
   //while(n_decoded < d_frame->n_data_bits) {
   while(n_decoded < in_n_data_bits) {
-    //printf("n_decoded = %d vs %d = in_n_data_bits\n", n_decoded, in_n_data_bits);
+    //DEBUG(printf("n_decoded = %d vs %d = in_n_data_bits\n", n_decoded, in_n_data_bits));
     if ((in_count % 4) == 0) { //0 or 3
-      //printf(" Viterbi_Butterfly Call,%d,n_decoded,%d,n_data_bits,%d,in_count,%d,%d\n", viterbi_butterfly_calls, n_decoded, in_n_data_bits, in_count, (in_count & 0xfffffffc));
+      //DEBUG(printf(" Viterbi_Butterfly Call,%d,n_decoded,%d,n_data_bits,%d,in_count,%d,%d\n", viterbi_butterfly_calls, n_decoded, in_n_data_bits, in_count, (in_count & 0xfffffffc)));
 
       //CALL viterbi_butterfly2_generic(&depunctured[in_count & 0xfffffffc], l_metric0_generic, l_metric1_generic, l_path0_generic, l_path1_generic);
       /* The basic Viterbi decoder operation, called a "butterfly"
@@ -540,7 +540,7 @@ uint8_t* do_decoding(int in_cbps, int in_ntraceback, const unsigned char* in_dep
 	if (out_count >= in_ntraceback) {
 	  for (int i= 0; i < 8; i++) {
 	    l_decoded[(out_count - in_ntraceback) * 8 + i] = (c >> (7 - i)) & 0x1;
-	    //printf("l_decoded[ %u ] written as %u\n", (out_count - in_ntraceback) * 8 + i, l_decoded[(out_count - in_ntraceback) * 8 + i]);
+	    //DEBUG(printf("l_decoded[ %u ] written as %u\n", (out_count - in_ntraceback) * 8 + i, l_decoded[(out_count - in_ntraceback) * 8 + i]));
 	    n_decoded++;
 	  }
 	}
@@ -551,34 +551,34 @@ uint8_t* do_decoding(int in_cbps, int in_ntraceback, const unsigned char* in_dep
   }
 
   /* DO_VERBOSE({ */
-  /*     printf("\nVBS: FINAL l_decoded = [\n"); */
+  /*     DEBUG(printf("\nVBS: FINAL l_decoded = [\n")); */
   /*     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) { */
-  /* 	///if (ti > 0) { printf(", "); } */
-  /* 	//if ((ti > 0) && ((ti % 8) == 0)) { printf("  "); } */
-  /* 	//if ((ti > 0) && ((ti % 40) == 0)) { printf("\n"); } */
-  /* 	printf("%5u : %3u : %p\n", ti, l_decoded[ti], &(l_decoded[ti])); */
+  /* 	///if (ti > 0) { DEBUG(printf(", ")); } */
+  /* 	//if ((ti > 0) && ((ti % 8) == 0)) { DEBUG(printf("  ")); } */
+  /* 	//if ((ti > 0) && ((ti % 40) == 0)) { DEBUG(printf("\n")); } */
+  /* 	DEBUG(printf("%5u : %3u : %p\n", ti, l_decoded[ti], &(l_decoded[ti]))); */
   /*     } */
-  /*     printf("]\n\n"); */
+  /*     DEBUG(printf("]\n\n")); */
   /*   });       */
 #if(0)
   {
-    printf("\nVBS: Final l_decoded : %p\n", l_decoded);
+    DEBUG(printf("\nVBS: Final l_decoded : %p\n", l_decoded));
     int per_row = 0;
-    printf("%p : ", &l_decoded[0]);
+    DEBUG(printf("%p : ", &l_decoded[0]));
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
       per_row++;
       if ((per_row % 8) == 0) {
-	printf(" ");
+	DEBUG(printf(" "));
       }
-      printf("%u", l_decoded[ti]);
+      DEBUG(printf("%u", l_decoded[ti]));
       if (per_row == 39) {
-	printf("\n");
-	printf("%p : ", &l_decoded[ti]);
+	DEBUG(printf("\n"));
+	DEBUG(printf("%p : ", &l_decoded[ti]));
 	per_row = 0;
       }
     }
-    printf("\n");
-    printf("\n");
+    DEBUG(printf("\n"));
+    DEBUG(printf("\n"));
   }
 #endif
 #ifndef USE_ESP_INTERFACE
@@ -658,14 +658,14 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 #endif
 
   DO_VERBOSE({
-      printf("VBS: depunctured = [\n");
+      DEBUG(printf("VBS: depunctured = [\n"));
       for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
-	if (ti > 0) { printf(", "); }
-	if ((ti > 0) && ((ti % 8) == 0)) { printf("  "); }
-	if ((ti > 0) && ((ti % 40) == 0)) { printf("\n"); }
-	printf("%02x", depunctured[ti]);
+	if (ti > 0) { DEBUG(printf(", ")); }
+	if ((ti > 0) && ((ti % 8) == 0)) { DEBUG(printf("  ")); }
+	if ((ti > 0) && ((ti % 40) == 0)) { DEBUG(printf("\n")); }
+	DEBUG(printf("%02x", depunctured[ti]));
       }
-      printf("\n");
+      DEBUG(printf("\n"));
     });
 
 #ifdef USE_ESP_INTERFACE
@@ -674,7 +674,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
    #ifdef HW_VIT
     uint8_t* inMemory  = vitHW_li_mem;
     uint8_t* outMemory = vitHW_lo_mem;
-    //printf("HW : inMemory = %p v %p AND outMemory = %p v %p\n", inMemory, vitHW_li_mem, outMemory, vitHW_lo_mem);
+    //DEBUG(printf("HW : inMemory = %p v %p AND outMemory = %p v %p\n", inMemory, vitHW_li_mem, outMemory, vitHW_lo_mem));
    #else
     uint8_t inMemory[24852];  // This is "minimally sized for max entries"
     uint8_t outMemory[18585]; // This is "minimally sized for max entries"
@@ -686,19 +686,19 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 	inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
       }
     }
-    if (imi != 64) { printf("ERROR : imi = %u and should be 64\n", imi); }
+    if (imi != 64) { DEBUG(printf("ERROR : imi = %u and should be 64\n", imi)); }
     // imi = 64;
     for (int ti = 0; ti < 6; ti ++) {
       inMemory[imi++] = d_depuncture_pattern[ti];
     }
-    if (imi != 70) { printf("ERROR : imi = %u and should be 70\n", imi); }
+    if (imi != 70) { DEBUG(printf("ERROR : imi = %u and should be 70\n", imi)); }
     // imi = 70
     imi += 2; // Padding
     for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
       inMemory[imi++] = depunctured[ti];
     }
 
-    if (imi != 24852) { printf("ERROR : imi = %u and should be 24852\n", imi); }
+    if (imi != 24852) { DEBUG(printf("ERROR : imi = %u and should be 24852\n", imi)); }
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
     // Reset the output space (for cleaner testing results)
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
@@ -706,16 +706,16 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     }
 
 #ifdef GENERATE_CHECK_VALUES
-    printf("\nINPUTS-TO-DO-DECODING:\n");
+    DEBUG(printf("\nINPUTS-TO-DO-DECODING:\n"));
     for (int ti = 0; ti < (84 + MAX_ENCODED_BITS); ti ++) {
-      printf("%u\n", inMemory[ti]);
+      DEBUG(printf("%u\n", inMemory[ti]));
     }
-    printf("LAST-INPUT\n\n\n");
+    DEBUG(printf("LAST-INPUT\n\n\n"));
 #endif
 
     // Call the do_decoding routine
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)
-    //printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback);
+    //DEBUG(printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback));
 #ifdef INT_TIME
     gettimeofday(&dodec_start, NULL);
 #endif
@@ -723,7 +723,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     vitHW_desc.cbps = ofdm->n_cbps;
     vitHW_desc.ntraceback = d_ntraceback;
     vitHW_desc.data_bits = frame->n_data_bits;
-    //printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits);
+    //DEBUG(printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits));
     do_decoding_hw(&vitHW_fd, &vitHW_desc);
 #else
     // Call the viterbi_butterfly2_generic function using ESP interface
@@ -739,21 +739,21 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     // Copy the outputs back into the composite locations
     imi = 0; // start of the outputs
 #ifdef GENERATE_CHECK_VALUES
-    printf("\n\nOUTPUTS-FROM-DO-DECODING:\n");
+    DEBUG(printf("\n\nOUTPUTS-FROM-DO-DECODING:\n"));
 #endif
-    //printf(" OUTPUT: ");
+    //DEBUG(printf(" OUTPUT: "));
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
 #ifdef GENERATE_CHECK_VALUES
-      printf("%u\n", outMemory[imi]);
+      DEBUG(printf("%u\n", outMemory[imi]));
 #endif
       d_decoded[ti] = outMemory[imi++];
-      //if (ti < 80) { printf("%u", d_decoded[ti]); }
+      //if (ti < 80) { DEBUG(printf("%u", d_decoded[ti])); }
     }
-    //printf("\n\n");
+    //DEBUG(printf("\n\n"));
 #endif
   }
 #ifdef GENERATE_CHECK_VALUES
-  printf("LAST-OUTPUT\n\n");
+  DEBUG(printf("LAST-OUTPUT\n\n"));
 #endif
 #if HW_VIT
   return vitHW_lo_mem; // outMemory;

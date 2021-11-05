@@ -72,51 +72,51 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 	out_msg[msg_length] = '\0';
 
 	if (verbose) {
-	  printf("\n");
-	  printf(">>>>>> Descrambler output is here: >>>>>> \n");
+	  DEBUG(printf("\n"));
+	  DEBUG(printf(">>>>>> Descrambler output is here: >>>>>> \n"));
 	  int  des_error_count = 0;
 	  for (int i = 0; i < output_length ; i++)
 	    {
 	      if (out[i] != *(ref+i))
 		{
-		  printf(">>>>>> Miscompare: descrambler[%d] = %u vs %u = EXPECTED_VALUE[%d]\n", i, out[i], *(ref+i), i);
+		  //DEBUG(printf(">>>>>> Miscompare: descrambler[%d] = %u vs %u = EXPECTED_VALUE[%d]\n", i, out[i], *(ref+i), i));
 		  des_error_count++;
 		}
 	    }
 	  if (des_error_count !=0)
 	    {
-	      printf(">>>>>> Mismatch in the descrambler block, please check the inputs and algorithm one last time. >>>>>> \n");
+	      DEBUG(printf(">>>>>> Mismatch in the descrambler block, please check the inputs and algorithm one last time. >>>>>> \n"));
 	    }
 	  else
 	    {
-	      printf("!!!!!! Great Job, descrambler algorithm works fine for the given configuration. !!!!!! \n");
+	      DEBUG(printf("!!!!!! Great Job, descrambler algorithm works fine for the given configuration. !!!!!! \n"));
 	    }
-	  printf("\n");
-	  printf(">>>>>> Decoded text message is here: >>>>>> \n");
+	  DEBUG(printf("\n"));
+	  DEBUG(printf(">>>>>> Decoded text message is here: >>>>>> \n"));
 
 	  for (int i = 0; i< msg_length; i++)
 	    {
-	      printf("%c", out_msg[i]);	
+	      DEBUG(printf("%c", out_msg[i]));	
 	    }
-	  printf("\n");
+	  DEBUG(printf("\n"));
 
 	  int  msg_error_count = 0;
 	  for (int i = 0; i < msg_length ; i++)
 	    {
 	      if (out_msg[i] != *(msg+i))
 		{
-		  printf(">>>>>> Miscompare: text_msg[%c] = %c vs %c = EXPECTED_VALUE[%c]\n", i, out_msg[i], *(msg+i), i);
+		  DEBUG(printf(">>>>>> Miscompare: text_msg[%c] = %c vs %c = EXPECTED_VALUE[%c]\n", i, out_msg[i], *(msg+i), i));
 		  msg_error_count++;
 		}
 	    }
 	  if (msg_error_count !=0)
 	    {
-	      printf(">>>>>> Mismatch in the text message, please check the inputs and algorithm one last time. >>>>>> \n");
+	      DEBUG(printf(">>>>>> Mismatch in the text message, please check the inputs and algorithm one last time. >>>>>> \n"));
 	    }
 	  else
 	    {
-	      printf("!!!!!! Great Job, text message decoding algorithm works fine for the given configuration. !!!!!! \n");
+	      DEBUG(printf("!!!!!! Great Job, text message decoding algorithm works fine for the given configuration. !!!!!! \n"));
 	    } 
-	  printf("\n");
+	  DEBUG(printf("\n"));
 	}
 }
