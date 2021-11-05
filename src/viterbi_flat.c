@@ -130,10 +130,13 @@ uint8_t* depuncture(uint8_t *in) {
 #ifdef HW_VIT
 static void do_decoding_hw(int *fd, struct vitdodec_access *desc)
 {
-  if (ioctl(*fd, VITDODEC_IOC_ACCESS, *desc)) {
-    perror("IOCTL:");
-    exit(EXIT_FAILURE);
-  }
+  //BM: REPLACE BELOW CTL CMD WITH DIRECT HW DESCRIPTORS
+  //if (ioctl(*fd, VITDODEC_IOC_ACCESS, *desc)) {
+  //  perror("IOCTL:");
+  //  exit(EXIT_FAILURE);
+  //}
+  
+  
 }
 #endif
 
@@ -648,11 +651,13 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   reset();
 
 #ifdef INT_TIME
-  gettimeofday(&depunc_start, NULL);
+  //gettimeofday(&depunc_start, NULL);
+  depunc_start = get_counter();
 #endif
   uint8_t *depunctured = depuncture(in);
 #ifdef INT_TIME
-  gettimeofday(&depunc_stop, NULL);
+  //gettimeofday(&depunc_stop, NULL);
+  depunc_stop = get_counter();
   depunc_sec  += depunc_stop.tv_sec  - depunc_start.tv_sec;
   depunc_usec += depunc_stop.tv_usec - depunc_start.tv_usec;
 #endif
@@ -717,7 +722,8 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)
     //DEBUG(printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback));
 #ifdef INT_TIME
-    gettimeofday(&dodec_start, NULL);
+    //gettimeofday(&dodec_start, NULL);
+    dodec_start = get_counter();
 #endif
 #ifdef HW_VIT
     vitHW_desc.cbps = ofdm->n_cbps;
@@ -730,7 +736,8 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
 #ifdef INT_TIME
-    gettimeofday(&dodec_stop, NULL);
+    //gettimeofday(&dodec_stop, NULL);
+    dodec_stop = get_counter();
     dodec_sec  += dodec_stop.tv_sec  - dodec_start.tv_sec;
     dodec_usec += dodec_stop.tv_usec - dodec_start.tv_usec;
 #endif
