@@ -61,15 +61,10 @@
  #include "mini-era.h"
 #endif
 
-#ifdef INT_TIME
-struct timeval dodec_stop, dodec_start;
-uint64_t dodec_sec  = 0LL;
-uint64_t dodec_usec = 0LL;
-
-struct timeval depunc_stop, depunc_start;
-uint64_t depunc_sec  = 0LL;
-uint64_t depunc_usec = 0LL;
-#endif
+uint64_t depunc_start;
+uint64_t depunc_stop;
+uint64_t dodec_start;
+uint64_t dodec_stop;
 
 #undef  GENERATE_CHECK_VALUES
 //#define  GENERATE_CHECK_VALUES
@@ -650,17 +645,9 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 
   reset();
 
-#ifdef INT_TIME
-  //gettimeofday(&depunc_start, NULL);
   depunc_start = get_counter();
-#endif
   uint8_t *depunctured = depuncture(in);
-#ifdef INT_TIME
-  //gettimeofday(&depunc_stop, NULL);
   depunc_stop = get_counter();
-  depunc_sec  += depunc_stop.tv_sec  - depunc_start.tv_sec;
-  depunc_usec += depunc_stop.tv_usec - depunc_start.tv_usec;
-#endif
 
   DO_VERBOSE({
       DEBUG(printf("VBS: depunctured = [\n"));
@@ -721,10 +708,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     // Call the do_decoding routine
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)
     //DEBUG(printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback));
-#ifdef INT_TIME
-    //gettimeofday(&dodec_start, NULL);
     dodec_start = get_counter();
-#endif
 #ifdef HW_VIT
     vitHW_desc.cbps = ofdm->n_cbps;
     vitHW_desc.ntraceback = d_ntraceback;
@@ -735,12 +719,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     // Call the viterbi_butterfly2_generic function using ESP interface
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
-#ifdef INT_TIME
-    //gettimeofday(&dodec_stop, NULL);
     dodec_stop = get_counter();
-    dodec_sec  += dodec_stop.tv_sec  - dodec_start.tv_sec;
-    dodec_usec += dodec_stop.tv_usec - dodec_start.tv_usec;
-#endif
 
 #ifndef HW_VIT
     // Copy the outputs back into the composite locations
