@@ -21,6 +21,7 @@
 #include "base.h"
 #include "utils.h"
 #include "viterbi_parms.h"
+#include "verbose.h"
 
 typedef unsigned char   uint8_t;
 

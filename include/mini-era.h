@@ -1,9 +1,13 @@
 #ifndef _MINI_ERA_H_
 #define _MINI_ERA_H_
 
+enum accelerator_coherence {ACC_COH_NONE = 0, ACC_COH_LLC, ACC_COH_RECALL, ACC_COH_FULL, ACC_COH_AUTO};
+
 struct vitdodec_access {
-	struct esp_access esp;
-	/* <<--regs-->> */
+	uint8_t run;
+	uint8_t p2p_store;
+	uint8_t p2p_nsrcs;
+	enum accelerator_coherence coherence;
 	unsigned cbps;
 	unsigned ntraceback;
 	unsigned data_bits;
@@ -46,8 +50,10 @@ typedef float fftHW_native_t;
 //const int32_t fftHW_log_len = FFTHW_LOG_LEN;
 
 struct fftHW_access {
-	struct esp_access esp;
-	/* <<--regs-->> */
+	uint8_t run;
+	uint8_t p2p_store;
+	uint8_t p2p_nsrcs;
+	enum accelerator_coherence coherence;
 	unsigned log_len;
 	unsigned do_bitrev;
 	unsigned src_offset;

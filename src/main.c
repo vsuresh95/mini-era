@@ -21,12 +21,6 @@
 
 #include "kernels_api.h"
 
-#if 1
-#define DEBUG(x) x
-#else
-#define DEBUG(x)
-#endif
-
 uint64_t start_prog;
 uint64_t start_iter_cv;
 uint64_t stop_iter_cv;

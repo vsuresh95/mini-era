@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "kernels_api.h"
+#include "tt00_100.h"
 
 /* These are globals for the trace read parsing routines */
 #define MAX_TR_LINE_SZ   256
@@ -44,7 +45,7 @@ get_object_token(char obj)
   } else { // a distance
     printf("ERROR : trace syntax is weird!\n");
     printf(" LINE : %s\n", in_line_buf);
-    printf(" TOKN : %u hit %c from %s\n", last_i, c, &in_line_buf[last_i]);
+    printf(" TOKN : %u hit from %s\n", last_i, &in_line_buf[last_i]);
     exit(-3);
   }
   in_tok = 1 - in_tok; // Flip to expect distance token
@@ -61,7 +62,7 @@ get_distance_token(unsigned dist)
   } else { // a distance
     printf("ERROR : trace syntax is weird!\n");
     printf(" LINE : %s\n", in_line_buf);
-    printf(" TOKN : %u hit %c from %s\n", last_i, c, &in_line_buf[last_i]);
+    printf(" TOKN : %u hit from %s\n", last_i, &in_line_buf[last_i]);
     exit(-4);
   }
   in_tok = 1 - in_tok; // Flip to expect object char token

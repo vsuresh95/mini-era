@@ -21,6 +21,8 @@
 #include "mini-era.h"
 #include "kernels_api.h"
 #include "read_trace.h"
+#include "vit_dictionary.h"
+#include "norm_radar_01k_dictionary.h"
 
 /* These are types, functions, etc. required for VITERBI */
 #include "viterbi_flat.h"
@@ -201,8 +203,9 @@ status_t init_rad_kernel()
       float entry_dist;
       unsigned entry_dict_values = 0;
 
-      entry_id = 0;
+      entry_id = di;
       entry_log_nsamples = 10;
+
       entry_dist = 1.0;
 
       if (radar_log_nsamples_per_dict_set[si] != entry_log_nsamples) {
@@ -220,7 +223,7 @@ status_t init_rad_kernel()
       the_radar_return_dict[si][di].distance =  entry_dist;
 
       for (int i = 0; i < 2*(1<<entry_log_nsamples); i++) {
-	      the_radar_return_dict[si][di].return_data[i] = norm_radar_01k[i];
+	      the_radar_return_dict[si][di].return_data[i] = norm_radar_01k[di][i];
 	      tot_dict_values++;
 	      entry_dict_values++;
       }
@@ -277,10 +280,10 @@ status_t init_rad_kernel()
   fftHW_lo_mem = &(fftHW_lmem[fftHW_out_offset]);
   printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem);
 
-  fftHW_desc.esp.run = true;
-  fftHW_desc.esp.coherence = ACC_COH_NONE;
-  fftHW_desc.esp.p2p_store = 0;
-  fftHW_desc.esp.p2p_nsrcs = 0;
+  fftHW_desc.run = true;
+  fftHW_desc.coherence = ACC_COH_NONE;
+  fftHW_desc.p2p_store = 0;
+  fftHW_desc.p2p_nsrcs = 0;
 
  #if (USE_FFT_ACCEL_TYPE == 1) // fft_stratus
   #ifdef HW_FFT_BITREV
@@ -399,10 +402,10 @@ status_t init_vit_kernel()
   vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
   printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
 
-  vitHW_desc.esp.run = true;
-  vitHW_desc.esp.coherence = ACC_COH_NONE;
-  vitHW_desc.esp.p2p_store = 0;
-  vitHW_desc.esp.p2p_nsrcs = 0;
+  vitHW_desc.run = true;
+  vitHW_desc.coherence = ACC_COH_NONE;
+  vitHW_desc.p2p_store = 0;
+  vitHW_desc.p2p_nsrcs = 0;
 #endif
 
   DEBUG(printf("DONE with init_vit_kernel -- returning success\n"));

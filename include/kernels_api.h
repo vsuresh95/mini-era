@@ -159,7 +159,7 @@ void closeout_trace_reader(void);
 /* Kernels initialization */
 status_t init_cv_kernel(char* py_file, char* dict_fn);
 status_t init_rad_kernel();
-status_t init_vit_kernel(char* dict_fn);
+status_t init_vit_kernel();
 
 
 label_t run_object_classification(unsigned tr_val);

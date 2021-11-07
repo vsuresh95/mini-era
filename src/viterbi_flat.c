@@ -46,6 +46,7 @@
 #include "base.h"
 #include "viterbi_flat.h"
 #include "viterbi_parms.h"
+#include "get_counter.h"
 
 #ifdef HW_VIT
  extern int vitHW_fd;
@@ -130,7 +131,6 @@ static void do_decoding_hw(int *fd, struct vitdodec_access *desc)
   //  perror("IOCTL:");
   //  exit(EXIT_FAILURE);
   //}
-  
   
 }
 #endif
@@ -719,6 +719,10 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     // Call the viterbi_butterfly2_generic function using ESP interface
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
     dodec_stop = get_counter();
 
 #ifndef HW_VIT
