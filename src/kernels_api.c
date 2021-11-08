@@ -818,12 +818,12 @@ message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
     viterbi_messages_histogram[vit_msgs_size][trace_msg->msg_id]++; 
     int n_res_char;
     //BM: Uncommenting
-    // result = decode(&(trace_msg->ofdm_p), &(trace_msg->frame_p), &(trace_msg->in_bits[0]), &n_res_char);
+     result = decode(&(trace_msg->ofdm_p), &(trace_msg->frame_p), &(trace_msg->in_bits[0]), &n_res_char);
     // descramble the output - put it in result
     int psdusize = trace_msg->frame_p.psdu_size;
     DEBUG(printf("  Calling the viterbi descrambler routine\n"));
     //BM: Uncommenting
-    // descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
+     descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
 
    #if(0)
     printf(" PSDU %u : Msg : = `", psdusize);
