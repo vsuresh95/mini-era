@@ -69,13 +69,9 @@
 #include "fft-1d.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/time.h>
 
-#ifdef INT_TIME
-struct timeval bitrev_stop, bitrev_start;
-uint64_t bitrev_sec  = 0LL;
-uint64_t bitrev_usec = 0LL;
-#endif
+uint64_t bitrev_start;
+uint64_t bitrev_stop;
 
 static unsigned int
 _rev (unsigned int v)
@@ -132,15 +128,9 @@ fft(float * data, unsigned int N, unsigned int logn, int sign)
   transform_length = 1;
 
   /* bit reversal */
-#ifdef INT_TIME
-  gettimeofday(&bitrev_start, NULL);
-#endif
+  bitrev_start = get_counter();
   bit_reverse (data, N, logn);
-#ifdef INT_TIME
-  gettimeofday(&bitrev_stop, NULL);
-  bitrev_sec  += bitrev_stop.tv_sec  - bitrev_start.tv_sec;
-  bitrev_usec += bitrev_stop.tv_usec - bitrev_start.tv_usec;
-#endif
+  bitrev_stop = get_counter();
 
   /* calculation */
   //printf("\nSTART,A,B,I,J,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n", "2*j", "Data", "2*j+1", "Data", "2*i", "Data", "2*i+1", "Data", "t_real", "t_imag");
@@ -150,8 +140,8 @@ fft(float * data, unsigned int N, unsigned int logn, int sign)
 
     theta = 1.0 * sign * M_PI / (float) transform_length;
 
-    s = sin (theta);
-    t = sin (0.5 * theta);
+    // s = sin (theta);
+    // t = sin (0.5 * theta);
     s2 = 2.0 * t * t;
 
     for (a = 0; a < transform_length; a++) {

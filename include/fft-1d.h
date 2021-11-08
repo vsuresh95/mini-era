@@ -73,6 +73,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <limits.h>
+#include "get_counter.h"
 
 int write_array_to_octave (float * data, unsigned int len, char * filename, char * name);
 int fft (float * data, unsigned int N, unsigned int logn, int sign);

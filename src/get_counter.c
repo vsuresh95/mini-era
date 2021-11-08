@@ -1,4 +1,4 @@
-#include <get_counter.h>
+#include "get_counter.h"
 
 uint64_t get_counter() {
   uint64_t counter;

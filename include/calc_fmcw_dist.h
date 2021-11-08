@@ -3,7 +3,7 @@
 #define INCLUDED_CALC_FMCW_DIST_H
 
 #include <stdint.h>
-#include <get_counter.h>
+#include "get_counter.h"
 
 /* Some global FFT Radar definitions */
 #define MAX_RADAR_N  (1<<14) // Max we allow is 16k samples
