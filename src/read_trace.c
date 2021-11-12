@@ -70,7 +70,7 @@ get_distance_token(unsigned dist)
 
 bool_t read_next_trace_record(vehicle_state_t vs)
 {
-  DEBUG(printf("In read_next_trace_record\n"));
+  printf("In read_next_trace_record time_step:%d max_time_step:%d\n", time_step, max_time_steps);
 
   if (time_step == max_time_steps) {
     return false;

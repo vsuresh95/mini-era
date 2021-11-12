@@ -83,6 +83,37 @@ struct fftHW_access {
 };
 #endif
 
+//BM: Added malloc/free capabilities for baremetal
+#define CACHELINE_SIZE 0x10
+
+#ifdef OVERRIDE_DRAM_SIZE
+static uintptr_t uncached_area_ptr = DRAM_BASE + (OVERRIDE_DRAM_SIZE >> 1);
+#else
+static uintptr_t uncached_area_ptr = 0xa0100000;
+#endif
+
+void *aligned_malloc(int size) {
+#ifndef __riscv
+	void *mem = malloc(size + CACHELINE_SIZE + sizeof(void*));
+#else
+	void *mem = (void *) uncached_area_ptr;
+	uncached_area_ptr += size + CACHELINE_SIZE + sizeof(void*);
+#endif
+
+	void **ptr = (void**) ((uintptr_t) (mem + CACHELINE_SIZE + sizeof(void*)) & ~(CACHELINE_SIZE-1));
+	ptr[-1] = mem;
+	return ptr;
+}
+
+void aligned_free(void *ptr) {
+	// On RISC-V we never free memory
+	// This hack is intended for simulation only
+#ifndef __riscv
+	free(((void**)ptr)[-1]);
+#endif
+}
+//BM: malloc+free changes end
+
 #define FFTHW_IOC_ACCESS	_IOW ('S', 0, struct fftHW_access)
 
 #endif /* _MINI_ERA_H_ */

@@ -189,13 +189,31 @@ status_t init_rad_kernel()
   radar_dict_items_per_set = 12;
 
   printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set);
-  
+    
+  //BM: Allocating memory space for the radar return dict
+  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
+  if (the_radar_return_dict == NULL) {
+    printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
+    return error;
+  }
+  for (int si = 0; si < num_radar_samples_sets; si++) {
+    the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
+    if (the_radar_return_dict[si] == NULL) {
+      printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
+      return error;
+    }
+  }
+
+
+
   unsigned tot_dict_values = 0;
   unsigned tot_index = 0;
 
   for (int si = 0; si < num_radar_samples_sets; si++) {
     radar_log_nsamples_per_dict_set[si] = 10;
-    DEBUG(printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]));
+    //BM
+    //DEBUG(printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]));
+    printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]);
 
     for (int di = 0; di < radar_dict_items_per_set; di++) {
       unsigned entry_id;
@@ -213,7 +231,7 @@ status_t init_rad_kernel()
 	      exit(-2);
       }
 	
-      printf("  Reading rad dictionary set %u entry %u : %u %u %f\n", si, di, entry_id, entry_log_nsamples, entry_dist);
+      printf("  Reading rad dictionary set %u entry %u : %u %u %d\n", si, di, entry_id, entry_log_nsamples, (int)(entry_dist));
 
       the_radar_return_dict[si][di].index = tot_index++;  // Set, and increment total index
       the_radar_return_dict[si][di].set = si;
@@ -235,6 +253,7 @@ status_t init_rad_kernel()
   } // for (si across radar dictionary sets)
 
   DEBUG(printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values));
+  printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values);
 
   // Initialize hist_pct_errs values
   for (int si = 0; si < num_radar_samples_sets; si++) {
@@ -327,6 +346,14 @@ status_t init_vit_kernel()
   // Read the number of messages
   num_viterbi_dictionary_items = 16;
   printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items);
+
+  //BM
+  the_viterbi_trace_dict = (vit_dict_entry_t*)aligned_malloc(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t));
+  if (the_viterbi_trace_dict == NULL) 
+  {
+    printf("ERROR : Cannot allocate Viterbi Trace Dictionary memory space\n");
+    return error;
+  }
 
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
@@ -673,12 +700,12 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
 
 distance_t execute_rad_kernel(float * inputs)
 {
-  DEBUG(printf("In execute_rad_kernel\n"));
+  printf("In execute_rad_kernel\n");
 
   /* 2) Conduct distance estimation on the waveform */
-  DEBUG(printf("  Calling calculate_peak_dist_from_fmcw\n"));
+  printf("  Calling calculate_peak_dist_from_fmcw\n");
   distance_t dist = calculate_peak_dist_from_fmcw(inputs);
-  DEBUG(printf("  Returning distance = %.1f\n", dist));
+  printf("  Returning distance = %.1f\n", dist);
   return dist;
 }
 

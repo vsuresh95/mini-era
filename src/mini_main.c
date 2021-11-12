@@ -61,8 +61,11 @@ int main(int argc, char *argv[])
   printf("Using viterbi message size %u = %s\n", vit_msgs_size, vit_msgs_size_str[vit_msgs_size]);
 
   printf("Using %u maximum time steps (simulation)\n", max_time_steps);
-  printf("Using viterbi messages per step behavior %u = %s\n", vit_msgs_per_step, vit_msgs_per_step_str[vit_msgs_per_step]);
+  //BM: Commenting
+  //printf("Using viterbi messages per step behavior %u = %s\n", vit_msgs_per_step, vit_msgs_per_step_str[vit_msgs_per_step]);
 
+  //BM: Runs sometimes do not reset timesteps unless in main()
+  time_step = 0;   
   printf("Doing initialization tasks...\n");
 
   // initialize radar kernel - set up buffer
@@ -101,7 +104,7 @@ int main(int argc, char *argv[])
       break;
     }
     
-    DEBUG(printf("Vehicle_State: Lane %u %s Speed %.1f\n", vehicle_state.lane, lane_names[vehicle_state.lane], vehicle_state.speed));
+    printf("Vehicle_State: Lane %u %s Speed %.1f\n", vehicle_state.lane, lane_names[vehicle_state.lane], vehicle_state.speed);
 
     /* The computer vision kernel performs object recognition on the
      * next image, and returns the corresponding label. 
@@ -122,7 +125,7 @@ int main(int argc, char *argv[])
     float * ref_in = rdentry_p->return_data;
     float radar_inputs[2*RADAR_N];
 
-    DEBUG(printf("\nCopying radar inputs...\n"));
+    printf("\nCopying radar inputs...\n");
 
     for (int ii = 0; ii < 2*RADAR_N; ii++) {
       radar_inputs[ii] = ref_in[ii];
@@ -145,22 +148,35 @@ int main(int argc, char *argv[])
 
     // Here we will simulate multiple cases, based on global vit_msgs_behavior
     int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
-    switch(vit_msgs_per_step) {
-      case 1: num_vit_msgs = total_obj; break;
-      case 2: num_vit_msgs = total_obj + 1; break;
-    }
+    //BM: vit_msgs_per_step is not being passed from commandline
+    // switch(vit_msgs_per_step) {
+    //   case 1: num_vit_msgs = total_obj; break;
+    //   case 2: num_vit_msgs = total_obj + 1; break;
+    // }
 
     // EXECUTE the kernels using the now known inputs 
     start_exec_cv = get_counter();
+    //BM: added print
+    printf("\nInvoking execute_cv_kernel...\n");
     label = execute_cv_kernel(cv_tr_label);
+    //BM: added print
+    printf("\nBack from execute_cv_kernel...\n");
     stop_exec_cv = get_counter();
 
     start_exec_rad = get_counter();
+    //BM: added print
+    printf("\nInvoking execute_rad_kernel...\n");
     distance = execute_rad_kernel(radar_inputs);
+    //BM: added print
+    printf("\nBack from execute_rad_kernel...\n");
     stop_exec_rad = get_counter();
 
     start_exec_vit = get_counter();
+    //BM: added print
+    printf("\nInvoking execute_vit_kernel...\n");
     message = execute_vit_kernel(vdentry_p, num_vit_msgs);
+    //BM: added print
+    printf("\nBack from execute_vit_kernel...\n");
     stop_exec_vit = get_counter();
 
     // POST-EXECUTE each kernels to gather stats, etc.
@@ -174,9 +190,9 @@ int main(int argc, char *argv[])
      * based on the currently perceived information. It returns the new
      * vehicle state.
      */
-    DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %.1f\n", time_step, message, distance));
+    printf("Time Step %3u : Calling Plan and Control with message %u and distance %.1f\n", time_step, message, distance);
     vehicle_state = plan_and_control(label, distance, message, vehicle_state);
-    DEBUG(printf("New vehicle state: lane %u speed %.1f\n\n", vehicle_state.lane, vehicle_state.speed));
+    printf("New vehicle state: lane %u speed %.1f\n\n", vehicle_state.lane, vehicle_state.speed);
 
     time_step++;
   }
