@@ -117,6 +117,24 @@ bit_reverse (float * w, unsigned int N, unsigned int bits)
   return w;
 }
 
+//sin
+double sin(double x)
+{
+	int i = 1;
+	double cur = x;
+	double acc = 1;
+	double fact= 1;
+	double pow = x;
+	while (fabs(acc) > .00000001 &&   i < 100){
+		fact *= ((2*i)*(2*i+1));
+		pow *= -1 * x*x;
+		acc =  pow / fact;
+		cur += acc;
+		i++;
+	}
+	return cur;
+
+}
 
 int
 fft(float * data, unsigned int N, unsigned int logn, int sign)
@@ -140,8 +158,9 @@ fft(float * data, unsigned int N, unsigned int logn, int sign)
 
     theta = 1.0 * sign * M_PI / (float) transform_length;
 
-    // s = sin (theta);
-    // t = sin (0.5 * theta);
+    //BM: uncommented sin()
+    s = sin (theta);
+    t = sin (0.5 * theta);
     s2 = 2.0 * t * t;
 
     for (a = 0; a < transform_length; a++) {
