@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
   vehicle_state.active  = true;
   vehicle_state.lane    = center;
   vehicle_state.speed   = 50;
-  printf("Vehicle starts with the following state: active: %u lane %u speed %.1f\n", vehicle_state.active, vehicle_state.lane, vehicle_state.speed);
+  printf("Vehicle starts with the following state: active: %u lane %u speed %d\n", vehicle_state.active, vehicle_state.lane, (int) vehicle_state.speed);
 
   printf("Starting the main loop...\n");
   start_prog = get_counter();
@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
       break;
     }
     
-    printf("Vehicle_State: Lane %u %s Speed %.1f\n", vehicle_state.lane, lane_names[vehicle_state.lane], vehicle_state.speed);
+    printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed);
 
     /* The computer vision kernel performs object recognition on the
      * next image, and returns the corresponding label. 
@@ -190,9 +190,9 @@ int main(int argc, char *argv[])
      * based on the currently perceived information. It returns the new
      * vehicle state.
      */
-    printf("Time Step %3u : Calling Plan and Control with message %u and distance %.1f\n", time_step, message, distance);
+    printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance);
     vehicle_state = plan_and_control(label, distance, message, vehicle_state);
-    printf("New vehicle state: lane %u speed %.1f\n\n", vehicle_state.lane, vehicle_state.speed);
+    printf("New vehicle state: lane %u speed %d\n\n", vehicle_state.lane, (int) vehicle_state.speed);
 
     time_step++;
   }

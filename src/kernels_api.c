@@ -224,7 +224,7 @@ status_t init_rad_kernel()
       entry_id = di;
       entry_log_nsamples = 10;
 
-      entry_dist = 1.0;
+      entry_dist = entry_dist_01k[di];
 
       if (radar_log_nsamples_per_dict_set[si] != entry_log_nsamples) {
 	      printf("ERROR reading Radar Dictionary set %u entry %u header : Mismatch in log2 samples : %u vs %u\n", si, di, entry_log_nsamples, radar_log_nsamples_per_dict_set[si]);
@@ -705,7 +705,7 @@ distance_t execute_rad_kernel(float * inputs)
   /* 2) Conduct distance estimation on the waveform */
   printf("  Calling calculate_peak_dist_from_fmcw\n");
   distance_t dist = calculate_peak_dist_from_fmcw(inputs);
-  printf("  Returning distance = %.1f\n", dist);
+  printf("  Returning distance = %d\n", (int) dist);
   return dist;
 }
 
@@ -737,13 +737,13 @@ void post_execute_rad_kernel(unsigned set, unsigned index, distance_t tr_dist, d
   } else if (pct_err < 0.01) {
     hist_pct_errs[set][index][1]++;
   } else if (pct_err < 0.1) {
-    printf("RADAR_LT010_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    printf("RADAR_LT010_ERR : %d vs %d : ERROR : %d   PCT_ERR : %d\n", (int) tr_dist, (int) dist, (int) error, (int) pct_err);
     hist_pct_errs[set][index][2]++;
   } else if (pct_err < 1.00) {
-    printf("RADAR_LT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    printf("RADAR_LT100_ERR : %d vs %d : ERROR : %d   PCT_ERR : %d\n", (int) tr_dist, (int) dist, (int) error, (int) pct_err);
     hist_pct_errs[set][index][3]++;
   } else {
-    printf("RADAR_GT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    printf("RADAR_GT100_ERR : %d vs %d : ERROR : %d   PCT_ERR : %d\n", (int) tr_dist, (int) dist, (int) error, (int) pct_err);
     hist_pct_errs[set][index][4]++;
   }
 }
@@ -779,9 +779,9 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
       unsigned ndp1 = RADAR_BUCKET_DISTANCE * (unsigned)(nearest_dist[vs.lane+1] / RADAR_BUCKET_DISTANCE); // floor by bucket...
       unsigned ndm1 = RADAR_BUCKET_DISTANCE * (unsigned)(nearest_dist[vs.lane-1] / RADAR_BUCKET_DISTANCE); // floor by bucket...
       tr_val = 0;
-      DEBUG(printf("  Lane %u : obj in %u is %c at %.1f : obj in %u is %c at %.1f\n", vs.lane, 
-		   vs.lane-1, nearest_obj[vs.lane-1], nearest_dist[vs.lane-1],
-		   vs.lane+1, nearest_obj[vs.lane+1], nearest_dist[vs.lane+1]));
+      DEBUG(printf("  Lane %u : obj in %u is %c at %d: obj in %u is %c at %d\n", vs.lane, 
+		   vs.lane-1, nearest_obj[vs.lane-1], (int) nearest_dist[vs.lane-1],
+		   vs.lane+1, nearest_obj[vs.lane+1], (int) nearest_dist[vs.lane+1]));
       if ((nearest_obj[vs.lane-1] != 'N') && (ndm1 < VIT_CLEAR_THRESHOLD)) {
 	      // Some object is in the Left lane at distance 0 or 1
 	      DEBUG(printf("    Marking unsafe to move left\n"));
@@ -888,8 +888,8 @@ void post_execute_vit_kernel(message_t tr_msg, message_t dec_msg)
 
 vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t message, vehicle_state_t vehicle_state)
 {
-  DEBUG(printf("In the plan_and_control routine : label %u %s distance %.1f (T1 %.1f T1 %.1f T3 %.1f) message %u\n", 
-	       label, object_names[label], distance, THRESHOLD_1, THRESHOLD_2, THRESHOLD_3, message));
+  DEBUG(printf("In the plan_and_control routine : label %u %s distance %d (T1 %d T1 %d T3 %d) message %u\n", 
+	       label, object_names[label], (int) distance, (int) THRESHOLD_1, (int) THRESHOLD_2, (int) THRESHOLD_3, message));
   vehicle_state_t new_vehicle_state = vehicle_state;
   if (!vehicle_state.active) {
     // Our car is broken and burning, no plan-and-control possible.
@@ -905,7 +905,7 @@ vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t m
     }
     
     // Some object ahead of us that needs to be avoided.
-    DEBUG(printf("  In lane %s with %c (%u) at %.1f (trace: %.1f)\n", lane_names[vehicle_state.lane], nearest_obj[vehicle_state.lane], label, distance, nearest_dist[vehicle_state.lane]));
+    DEBUG(printf("  In lane %s with %c (%u) at %d (trace: %d)\n", lane_names[vehicle_state.lane], nearest_obj[vehicle_state.lane], label, (int) distance, (int) nearest_dist[vehicle_state.lane]));
     switch (message) {
       case safe_to_move_right_or_left   :
 	      /* Bias is move right, UNLESS we are in the Right lane and would then head into the RHazard Lane */
@@ -1038,9 +1038,9 @@ void closeout_vit_kernel()
     }
   }
   double avg_objs = (1.0 * sum)/(1.0 * radar_total_calc); // radar_total_calc == total time steps
-  printf("There were %.3lf obstacles per time step (average)\n", avg_objs);
+  printf("There were %d obstacles per time step (average)\n", (int) avg_objs);
   double avg_msgs = (1.0 * total_msgs)/(1.0 * radar_total_calc); // radar_total_calc == total time steps
-  printf("There were %.3lf messages per time step (average)\n", avg_msgs);
+  printf("There were %d messages per time step (average)\n", (int) avg_msgs);
   printf("There were %u bad decodes of the %u messages\n", bad_decode_msgs, total_msgs);
 
   printf("\nHistogram of Viterbi Messages:\n");
