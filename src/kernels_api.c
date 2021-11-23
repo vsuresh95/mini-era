@@ -180,7 +180,8 @@ static void init_fft_parameters()
 }
 #endif
 
-unsigned **ptable;
+unsigned **ptable_fft;
+unsigned **ptable_vit;
 
 extern void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg);
 
@@ -211,15 +212,17 @@ status_t init_rad_kernel()
     }
   }
 
-	ptable = aligned_malloc(NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)) * sizeof(unsigned *));
+#ifdef HW_FFT
+	ptable_fft = aligned_malloc(NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)) * sizeof(unsigned *));
 	for (int i = 0; i < NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)); i++)
-		ptable[i] = (unsigned *) &the_radar_return_dict[i * (CHUNK_SIZE / sizeof(float))];
+		ptable_fft[i] = (unsigned *) &the_radar_return_dict[i * (CHUNK_SIZE / sizeof(radar_dict_entry_t))];
 
 	// Pass common configuration parameters
 	iowrite32(fft_dev, SELECT_REG, ioread32(fft_dev, DEVID_REG));
-	iowrite32(fft_dev, PT_ADDRESS_REG, (unsigned long) ptable);
+	iowrite32(fft_dev, PT_ADDRESS_REG, (unsigned long) ptable_fft);
 	iowrite32(fft_dev, PT_NCHUNK_REG, NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)));
 	iowrite32(fft_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+#endif // if HW_FFT
 
   printf("after io\n");
 
@@ -371,6 +374,18 @@ status_t init_vit_kernel()
     printf("ERROR : Cannot allocate Viterbi Trace Dictionary memory space\n");
     return error;
   }
+
+#ifdef HW_VIT
+	ptable_vit = aligned_malloc(NCHUNK(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t)) * sizeof(unsigned *));
+	for (int i = 0; i < NCHUNK(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t)); i++)
+		ptable_vit[i] = (unsigned *) &the_radar_return_dict[i * (CHUNK_SIZE / sizeof(vit_dict_entry_t))];
+
+	// Pass common configuration parameters
+	iowrite32(vit_dev, SELECT_REG, ioread32(vit_dev, DEVID_REG));
+	iowrite32(vit_dev, PT_ADDRESS_REG, (unsigned long) ptable_vit);
+	iowrite32(vit_dev, PT_NCHUNK_REG, NCHUNK(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t)));
+	iowrite32(vit_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+#endif // if HW_VIT
 
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
