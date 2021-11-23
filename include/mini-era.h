@@ -1,7 +1,8 @@
 #ifndef _MINI_ERA_H_
 #define _MINI_ERA_H_
 
-enum accelerator_coherence {ACC_COH_NONE = 0, ACC_COH_LLC, ACC_COH_RECALL, ACC_COH_FULL, ACC_COH_AUTO};
+#include <esp_accelerator.h>
+#include <esp_probe.h>
 
 struct vitdodec_access {
 	uint8_t run;
@@ -16,6 +17,12 @@ struct vitdodec_access {
 };
 
 #define VITDODEC_IOC_ACCESS	_IOW ('S', 0, struct vitdodec_access)
+
+#define SLD_FFT 0x059
+#define FFT_DEV_NAME "sld,fft_stratus"
+
+#define SLD_VITDODEC 0x030
+#define VIT_DEV_NAME "sld,vitdodec_stratus"
 
 typedef int8_t vitHW_token_t;
 
@@ -83,6 +90,7 @@ struct fftHW_access {
 };
 #endif
 
+/*
 //BM: Added malloc/free capabilities for baremetal
 #define CACHELINE_SIZE 0x10
 
@@ -113,6 +121,7 @@ void aligned_free(void *ptr) {
 #endif
 }
 //BM: malloc+free changes end
+*/
 
 #define FFTHW_IOC_ACCESS	_IOW ('S', 0, struct fftHW_access)
 

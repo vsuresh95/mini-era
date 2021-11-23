@@ -150,9 +150,6 @@ fft(float * data, unsigned int N, unsigned int logn, int sign)
   bit_reverse (data, N, logn);
   bitrev_stop = get_counter();
 
-  // TODO VIG: program is stuck without this print
-  printf("Finished bit_reverse\n");
-
   /* calculation */
   //printf("\nSTART,A,B,I,J,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n", "2*j", "Data", "2*j+1", "Data", "2*i", "Data", "2*i+1", "Data", "t_real", "t_imag");
   for (bit = 0; bit < logn; bit++) {

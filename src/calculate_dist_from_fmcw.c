@@ -59,7 +59,6 @@ void init_calculate_peak_dist(unsigned fft_logn_samples)
 
 
 #ifdef HW_FFT
-#include "contig.h"
 #include "fixed_point.h"
 #include "mini-era.h"
 
@@ -68,8 +67,6 @@ void init_calculate_peak_dist(unsigned fft_logn_samples)
 //extern int32_t fftHW_len;
 //extern int32_t fftHW_log_len;
 
-extern int fftHW_fd;
-extern contig_handle_t fftHW_mem;
 extern fftHW_token_t* fftHW_lmem;
 
 extern struct fftHW_access fftHW_desc;
@@ -114,7 +111,7 @@ void fft_bit_reverse(float *w, unsigned int n, unsigned int bits)
 }
 
 
-static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *mem, size_t size, size_t out_size,*/ struct fftHW_access *desc)
+static void fft_in_hw(struct fftHW_access *desc)
 {
   #if 0
 	// Configure Spandex request types
@@ -191,7 +188,7 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_cvtin_stop = get_counter();
 
   fft_start = get_counter();
-  fft_in_hw(&fftHW_fd, &fftHW_desc);
+  fft_in_hw(&fftHW_desc);
   fft_stop = get_counter();
 
   fft_cvtout_start = get_counter();

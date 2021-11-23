@@ -43,6 +43,10 @@ bool_t all_obstacle_lanes_mode = false;
 unsigned time_step = 0;         // The number of elapsed time steps
 unsigned max_time_steps = 5000; // The max time steps to simulate (default to 5000)
 
+struct esp_device *espdevs;
+struct esp_device *fft_dev, *vit_dev;
+int ndev;
+
 int main(int argc, char *argv[])
 {
   vehicle_state_t vehicle_state;
@@ -63,6 +67,28 @@ int main(int argc, char *argv[])
   printf("Using %u maximum time steps (simulation)\n", max_time_steps);
   //BM: Commenting
   //printf("Using viterbi messages per step behavior %u = %s\n", vit_msgs_per_step, vit_msgs_per_step_str[vit_msgs_per_step]);
+
+#ifdef HW_FFT
+  // find the FFT device
+	ndev = probe(&espdevs, VENDOR_SLD, SLD_FFT, FFT_DEV_NAME);
+	if (ndev == 0) {
+		printf("fft not found\n");
+		return 0;
+	}
+
+	fft_dev = &espdevs[0];
+#endif // if HW_FFT
+
+#ifdef HW_VIT
+  // find the Viterbi device
+	ndev = probe(&espdevs, VENDOR_SLD, SLD_VITDODEC, VIT_DEV_NAME);
+	if (ndev == 0) {
+		printf("vitdodec not found\n");
+		return 0;
+	}
+
+	vit_dev = &espdevs[0];
+#endif // if HW_VIT
 
   //BM: Runs sometimes do not reset timesteps unless in main()
   time_step = 0;   

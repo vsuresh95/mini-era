@@ -19,6 +19,7 @@
 #define _kernels_api_h
 
 #include "verbose.h"
+#include "mini-era.h"
 
 #define TIME
 
@@ -30,6 +31,9 @@ typedef float distance_t;
 
 #include "calc_fmcw_dist.h"
 #include "get_counter.h"
+
+#define __round_mask(x, y) ((y)-1)
+#define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
 
 typedef struct {
   unsigned int index;          // A global index (of all radar dictionary entries
@@ -149,6 +153,10 @@ extern unsigned rand_seed;
 extern unsigned int num_radar_samples_sets;
 extern unsigned int crit_fft_samples_set;
 extern unsigned int radar_log_nsamples_per_dict_set[MAX_RDICT_SAMPLE_SETS];
+
+extern struct esp_device *espdevs;
+extern struct esp_device *fft_dev, *vit_dev;
+extern int ndev;
 
 /* Input Trace Functions */
 status_t init_trace_reader(char * tr_fn);

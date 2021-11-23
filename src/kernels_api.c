@@ -18,7 +18,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "mini-era.h"
 #include "kernels_api.h"
 #include "read_trace.h"
 #include "vit_dictionary.h"
@@ -26,6 +25,14 @@
 
 /* These are types, functions, etc. required for VITERBI */
 #include "viterbi_flat.h"
+
+/* Size of the contiguous chunks for scatter/gather */
+#define BIT(nr) (1UL << (nr))
+#define CHUNK_SHIFT 20
+#define CHUNK_SIZE BIT(CHUNK_SHIFT)
+#define NCHUNK(_sz) ((_sz % CHUNK_SIZE == 0) ?		\
+			(_sz / CHUNK_SIZE) :		\
+			(_sz / CHUNK_SIZE) + 1)
 
 static unsigned DMA_WORD_PER_BEAT(unsigned _st)
 {
@@ -40,7 +47,7 @@ char* lane_names[NUM_LANES] = {"LHazard", "Left", "Center", "Right", "RHazard" }
 char* message_names[NUM_MESSAGES] = {"Safe_L_or_R", "Safe_R_only", "Safe_L_only", "Unsafe_L_or_R" };
 char* object_names[NUM_OBJECTS] = {"Nothing", "Car", "Truck", "Person", "Bike" };
 
-unsigned fft_logn_samples = 14; // Defaults to 16k samples
+unsigned fft_logn_samples = 10; // Defaults to 1k samples
 
 unsigned total_obj; // Total non-'N' obstacle objects across all lanes this time step
 unsigned obj_in_lane[NUM_LANES]; // Number of obstacle objects in each lane this time step (at least one, 'n')
@@ -98,7 +105,6 @@ unsigned bad_decode_msgs = 0; // Total messages decoded incorrectly during the f
 char VIT_DEVNAME[128];
 
 int vitHW_fd;
-contig_handle_t vitHW_mem;
 vitHW_token_t *vitHW_lmem;   // Pointer to local view of contig memory
 vitHW_token_t *vitHW_li_mem; // Pointer to input memory block
 vitHW_token_t *vitHW_lo_mem; // Pointer to output memory block
@@ -138,8 +144,6 @@ static void init_vit_parameters()
 char FFT_DEVNAME[128];
 
 int fftHW_fd;
-contig_handle_t fftHW_mem;
-
 fftHW_token_t* fftHW_lmem;  // Pointer to local version (mapping) of fftHW_mem
 fftHW_token_t* fftHW_li_mem; // Pointer to input memory block
 fftHW_token_t* fftHW_lo_mem; // Pointer to output memory block
@@ -176,6 +180,8 @@ static void init_fft_parameters()
 }
 #endif
 
+unsigned **ptable;
+
 extern void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg);
 
 status_t init_rad_kernel()
@@ -196,6 +202,7 @@ status_t init_rad_kernel()
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
     return error;
   }
+
   for (int si = 0; si < num_radar_samples_sets; si++) {
     the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
     if (the_radar_return_dict[si] == NULL) {
@@ -204,7 +211,17 @@ status_t init_rad_kernel()
     }
   }
 
+	ptable = aligned_malloc(NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)) * sizeof(unsigned *));
+	for (int i = 0; i < NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)); i++)
+		ptable[i] = (unsigned *) &the_radar_return_dict[i * (CHUNK_SIZE / sizeof(float))];
 
+	// Pass common configuration parameters
+	iowrite32(fft_dev, SELECT_REG, ioread32(fft_dev, DEVID_REG));
+	iowrite32(fft_dev, PT_ADDRESS_REG, (unsigned long) ptable);
+	iowrite32(fft_dev, PT_NCHUNK_REG, NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)));
+	iowrite32(fft_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+  printf("after io\n");
 
   unsigned tot_dict_values = 0;
   unsigned tot_index = 0;
@@ -274,12 +291,12 @@ status_t init_rad_kernel()
 
  #ifdef HW_FFT
   init_fft_parameters();
- #if (USE_FFT_ACCEL_TYPE == 1)
-  snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
- #elif (USE_FFT_ACCEL_TYPE == 2)
-  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
- #endif
-  printf("Open device %s\n", FFT_DEVNAME);
+ // #if (USE_FFT_ACCEL_TYPE == 1)
+ //  snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
+ // #elif (USE_FFT_ACCEL_TYPE == 2)
+ //  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
+ // #endif
+ //  printf("Open device %s\n", FFT_DEVNAME);
   #if (USE_FFT_FX == 64)
    printf(" typedef unsigned long long token_t\n");
    printf(" typedef double native_t\n");
