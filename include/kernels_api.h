@@ -154,10 +154,6 @@ extern unsigned int num_radar_samples_sets;
 extern unsigned int crit_fft_samples_set;
 extern unsigned int radar_log_nsamples_per_dict_set[MAX_RDICT_SAMPLE_SETS];
 
-extern struct esp_device *espdevs;
-extern struct esp_device *fft_dev, *vit_dev;
-extern int ndev;
-
 /* Input Trace Functions */
 status_t init_trace_reader(char * tr_fn);
 bool_t eof_trace_reader(void);

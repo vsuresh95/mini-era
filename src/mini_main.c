@@ -122,8 +122,9 @@ int main(int argc, char *argv[])
   printf("Starting the main loop...\n");
   start_prog = get_counter();
  
+ #if 1
   // hardcoded for 100 trace samples
-  for (int i = 0; i < 100; i++)
+  for (int i = 0; i < 10; i++)
   {
     if (!read_next_trace_record(vehicle_state))
     {
@@ -156,8 +157,8 @@ int main(int argc, char *argv[])
     for (int ii = 0; ii < 2*RADAR_N; ii++) {
       radar_inputs[ii] = ref_in[ii];
 
-      #ifdef SUPER_VERBOSE
-       if (ii < 64) { printf("radar_inputs[%2u] = %f  %f\n", radar_inputs[ii], ref_in[ii]); }
+      #if 0
+       if (ii < 64) { printf("radar_inputs[%u] = %x %x %x\n", ii, radar_inputs[ii], ref_in[ii], rdentry_p->return_data[ii]); }
       #endif
     }
 
@@ -194,7 +195,7 @@ int main(int argc, char *argv[])
     printf("\nInvoking execute_rad_kernel...\n");
     distance = execute_rad_kernel(radar_inputs);
     //BM: added print
-    printf("\nBack from execute_rad_kernel...\n");
+    printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance);
     stop_exec_rad = get_counter();
 
     start_exec_vit = get_counter();
@@ -202,7 +203,7 @@ int main(int argc, char *argv[])
     printf("\nInvoking execute_vit_kernel...\n");
     message = execute_vit_kernel(vdentry_p, num_vit_msgs);
     //BM: added print
-    printf("\nBack from execute_vit_kernel...\n");
+    printf("\nBack from execute_vit_kernel... message = %d\n", message);
     stop_exec_vit = get_counter();
 
     // POST-EXECUTE each kernels to gather stats, etc.
@@ -222,6 +223,7 @@ int main(int argc, char *argv[])
 
     time_step++;
   }
+  #endif
 
   stop_prog = get_counter();
 

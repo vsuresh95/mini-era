@@ -175,7 +175,7 @@ static void init_fft_parameters()
 	fftHW_out_len =  fftHW_out_words_adj;
 	fftHW_in_size = fftHW_in_len * sizeof(fftHW_token_t);
 	fftHW_out_size = fftHW_out_len * sizeof(fftHW_token_t);
-	fftHW_out_offset = 0;
+	fftHW_out_offset = fftHW_in_size;
 	fftHW_size = (fftHW_out_offset * sizeof(fftHW_token_t)) + fftHW_out_size;
 }
 #endif
@@ -198,33 +198,25 @@ status_t init_rad_kernel()
   printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set);
     
   //BM: Allocating memory space for the radar return dict
-  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
+  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
+  // the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
   if (the_radar_return_dict == NULL) {
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
     return error;
   }
 
-  for (int si = 0; si < num_radar_samples_sets; si++) {
-    the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
-    if (the_radar_return_dict[si] == NULL) {
-      printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
-      return error;
-    }
-  }
+  printf("the_radar_return_dict = %p, sizeof(radar_dict_entry_t) = %d\n", the_radar_return_dict, sizeof(radar_dict_entry_t));
+    
+  // for (int si = 0; si < num_radar_samples_sets; si++) {
+  //   the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
+  //   if (the_radar_return_dict[si] == NULL) {
+  //     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
+  //     return error;
+  //   }
 
-#ifdef HW_FFT
-	ptable_fft = aligned_malloc(NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)) * sizeof(unsigned *));
-	for (int i = 0; i < NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)); i++)
-		ptable_fft[i] = (unsigned *) &the_radar_return_dict[i * (CHUNK_SIZE / sizeof(radar_dict_entry_t))];
+  //   printf("the_radar_return_dict[%d] = %p, sizeof(radar_dict_entry_t) = %d, MAX_RADAR_N = %d\n", si, the_radar_return_dict[si], sizeof(radar_dict_entry_t), MAX_RADAR_N);
+  // }
 
-	// Pass common configuration parameters
-	iowrite32(fft_dev, SELECT_REG, ioread32(fft_dev, DEVID_REG));
-	iowrite32(fft_dev, PT_ADDRESS_REG, (unsigned long) ptable_fft);
-	iowrite32(fft_dev, PT_NCHUNK_REG, NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)));
-	iowrite32(fft_dev, PT_SHIFT_REG, CHUNK_SHIFT);
-#endif // if HW_FFT
-
-  printf("after io\n");
 
   unsigned tot_dict_values = 0;
   unsigned tot_index = 0;
@@ -294,33 +286,52 @@ status_t init_rad_kernel()
 
  #ifdef HW_FFT
   init_fft_parameters();
- // #if (USE_FFT_ACCEL_TYPE == 1)
- //  snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
- // #elif (USE_FFT_ACCEL_TYPE == 2)
- //  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
- // #endif
- //  printf("Open device %s\n", FFT_DEVNAME);
-  #if (USE_FFT_FX == 64)
-   printf(" typedef unsigned long long token_t\n");
-   printf(" typedef double native_t\n");
-   printf(" #define fx2float fixed64_to_double\n");
-   printf(" #define float2fx double_to_fixed64\n");
-  #elif (USE_FFT_FX == 32)
-   printf(" typedef int token_t\n");
-   printf(" typedef float native_t\n");
-   printf(" #define fx2float fixed32_to_float\n");
-   printf(" #define float2fx float_to_fixed32\n");
-  #endif /* FFT_FX_WIDTH */
-  printf(" #define FX_IL %u\n", FX_IL);
+  // #if (USE_FFT_ACCEL_TYPE == 1)
+  //  snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
+  // #elif (USE_FFT_ACCEL_TYPE == 2)
+  //  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
+  // #endif
+  //  printf("Open device %s\n", FFT_DEVNAME);
+  // #if (USE_FFT_FX == 64)
+  //  printf(" typedef unsigned long long token_t\n");
+  //  printf(" typedef double native_t\n");
+  //  printf(" #define fx2float fixed64_to_double\n");
+  //  printf(" #define float2fx double_to_fixed64\n");
+  // #elif (USE_FFT_FX == 32)
+  //  printf(" typedef int token_t\n");
+  //  printf(" typedef float native_t\n");
+  //  printf(" #define fx2float fixed32_to_float\n");
+  //  printf(" #define float2fx float_to_fixed32\n");
+  // #endif /* FFT_FX_WIDTH */
+  // printf(" #define FX_IL %u\n", FX_IL);
 
-  printf("Allocate hardware buffer of size %zu\n", fftHW_size);
+  printf("Allocate hardware buffer of size %d\n", fftHW_size);
+  fftHW_lmem = (fftHW_token_t*)aligned_malloc(fftHW_size);
+  printf("fftHW_lmem = %p\n", fftHW_lmem);
 
   fftHW_li_mem = &(fftHW_lmem[0]);
-  fftHW_lo_mem = &(fftHW_lmem[fftHW_out_offset]);
+  fftHW_lo_mem = &(fftHW_lmem[fftHW_out_words_adj]);
   printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem);
 
+#ifdef HW_FFT
+	// ptable_fft = aligned_malloc(NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)) * sizeof(unsigned *));
+	ptable_fft = aligned_malloc(NCHUNK(fftHW_size) * sizeof(unsigned *));
+
+	for (int i = 0; i < NCHUNK(fftHW_size); i++) {
+		ptable_fft[i] = (unsigned *) &fftHW_lmem[i * (CHUNK_SIZE / sizeof(fftHW_token_t))];
+
+    printf("ptable_fft[%d] = %p\n", i, ptable_fft[i]);
+  }
+
+	// Pass common configuration parameters
+	iowrite32(fft_dev, SELECT_REG, ioread32(fft_dev, DEVID_REG));
+	iowrite32(fft_dev, PT_ADDRESS_REG, (unsigned long) ptable_fft);
+	iowrite32(fft_dev, PT_NCHUNK_REG, NCHUNK(fftHW_size));
+	iowrite32(fft_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+#endif // if HW_FFT
+
   fftHW_desc.run = true;
-  fftHW_desc.coherence = ACC_COH_NONE;
+  fftHW_desc.coherence = ACC_COH_FULL;
   fftHW_desc.p2p_store = 0;
   fftHW_desc.p2p_nsrcs = 0;
 
@@ -368,24 +379,12 @@ status_t init_vit_kernel()
   printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items);
 
   //BM
-  the_viterbi_trace_dict = (vit_dict_entry_t*)aligned_malloc(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t));
+  the_viterbi_trace_dict = (vit_dict_entry_t*)aligned_malloc(num_viterbi_dictionary_items*sizeof(vit_dict_entry_t));
   if (the_viterbi_trace_dict == NULL) 
   {
     printf("ERROR : Cannot allocate Viterbi Trace Dictionary memory space\n");
     return error;
   }
-
-#ifdef HW_VIT
-	ptable_vit = aligned_malloc(NCHUNK(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t)) * sizeof(unsigned *));
-	for (int i = 0; i < NCHUNK(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t)); i++)
-		ptable_vit[i] = (unsigned *) &the_radar_return_dict[i * (CHUNK_SIZE / sizeof(vit_dict_entry_t))];
-
-	// Pass common configuration parameters
-	iowrite32(vit_dev, SELECT_REG, ioread32(vit_dev, DEVID_REG));
-	iowrite32(vit_dev, PT_ADDRESS_REG, (unsigned long) ptable_vit);
-	iowrite32(vit_dev, PT_NCHUNK_REG, NCHUNK(num_viterbi_dictionary_items* sizeof(vit_dict_entry_t)));
-	iowrite32(vit_dev, PT_SHIFT_REG, CHUNK_SHIFT);
-#endif // if HW_VIT
 
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
@@ -455,9 +454,24 @@ status_t init_vit_kernel()
 #ifdef HW_VIT
   init_vit_parameters();
 
+  vitHW_lmem = (vitHW_token_t*)aligned_malloc(vitHW_size);
+  printf("vitHW_lmem = %p\n", vitHW_lmem);
+
   vitHW_li_mem = &(vitHW_lmem[0]);
   vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
   printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
+
+#ifdef HW_VIT
+	ptable_vit = aligned_malloc(NCHUNK(vitHW_size) * sizeof(unsigned *));
+	for (int i = 0; i < NCHUNK(vitHW_size); i++)
+		ptable_vit[i] = (unsigned *) &vitHW_lmem[i * (CHUNK_SIZE / sizeof(vitHW_token_t))];
+
+	// Pass common configuration parameters
+	iowrite32(vit_dev, SELECT_REG, ioread32(vit_dev, DEVID_REG));
+	iowrite32(vit_dev, PT_ADDRESS_REG, (unsigned long) ptable_vit);
+	iowrite32(vit_dev, PT_NCHUNK_REG, NCHUNK(vitHW_size));
+	iowrite32(vit_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+#endif // if HW_VIT
 
   vitHW_desc.run = true;
   vitHW_desc.coherence = ACC_COH_NONE;
@@ -724,6 +738,8 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   DEBUG(printf("In iterate_rad_kernel\n"));
   unsigned tr_val = nearest_dist[vs.lane] / RADAR_BUCKET_DISTANCE;  // The proper message for this time step and car-lane
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
+  printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]);
+
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
   return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
 }

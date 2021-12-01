@@ -93,9 +93,11 @@ bool_t read_next_trace_record(vehicle_state_t vs)
 
     unsigned dist = tt00_val[time_step][i];
     get_distance_token(dist);
+    
+    in_lane++;
   }
 
-#ifdef SUPER_VERBOSE
+#if 1
   for (int i = 1; i < (NUM_LANES-1); i++) {
     printf("  Lane %u %8s : ", i, lane_names[i]);
     if (obj_in_lane[i] > 0) {

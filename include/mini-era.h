@@ -21,6 +21,10 @@ struct vitdodec_access {
 #define SLD_FFT 0x059
 #define FFT_DEV_NAME "sld,fft_stratus"
 
+#define FFT_DO_PEAK_REG 0x48
+#define FFT_DO_BITREV_REG 0x44
+#define FFT_LOG_LEN_REG 0x40
+
 #define SLD_VITDODEC 0x030
 #define VIT_DEV_NAME "sld,vitdodec_stratus"
 

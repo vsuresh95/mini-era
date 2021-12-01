@@ -68,6 +68,8 @@ void init_calculate_peak_dist(unsigned fft_logn_samples)
 //extern int32_t fftHW_log_len;
 
 extern fftHW_token_t* fftHW_lmem;
+extern fftHW_token_t* fftHW_li_mem;
+extern fftHW_token_t* fftHW_lo_mem;
 
 extern struct fftHW_access fftHW_desc;
 
@@ -113,50 +115,51 @@ void fft_bit_reverse(float *w, unsigned int n, unsigned int bits)
 
 static void fft_in_hw(struct fftHW_access *desc)
 {
-  #if 0
-	// Configure Spandex request types
-#if (SPANDEX_MODE > 1)
-	spandex_config_t spandex_config;
-	spandex_config.spandex_reg = 0;
-#if (SPANDEX_MODE == 2)
-	spandex_config.r_en = 1;
-	spandex_config.r_type = 1;
-#elif (SPANDEX_MODE == 3)
-	spandex_config.r_en = 1;
-	spandex_config.r_type = 2;
-	spandex_config.w_en = 1;
-	spandex_config.w_type = 1;
-#elif (SPANDEX_MODE == 4)
-	spandex_config.r_en = 1;
-	spandex_config.r_type = 2;
-	spandex_config.w_en = 1;
-	spandex_config.w_op = 1;
-	spandex_config.w_type = 1;
-#endif
-	iowrite32(dev, SPANDEX_REG, spandex_config.spandex_reg);
-#endif
+// 	// Configure Spandex request types
+// #if (SPANDEX_MODE > 1)
+// 	spandex_config_t spandex_config;
+// 	spandex_config.spandex_reg = 0;
+// #if (SPANDEX_MODE == 2)
+// 	spandex_config.r_en = 1;
+// 	spandex_config.r_type = 1;
+// #elif (SPANDEX_MODE == 3)
+// 	spandex_config.r_en = 1;
+// 	spandex_config.r_type = 2;
+// 	spandex_config.w_en = 1;
+// 	spandex_config.w_type = 1;
+// #elif (SPANDEX_MODE == 4)
+// 	spandex_config.r_en = 1;
+// 	spandex_config.r_type = 2;
+// 	spandex_config.w_en = 1;
+// 	spandex_config.w_op = 1;
+// 	spandex_config.w_type = 1;
+// #endif
+// 	iowrite32(fft_dev, SPANDEX_REG, spandex_config.spandex_reg);
+// #endif
 
-	iowrite32(dev, COHERENCE_REG, fftHW_desc.esp.coherence);
-	iowrite32(dev, FFT_DO_PEAK_REG, 0);
-	iowrite32(dev, FFT_DO_BITREV_REG, fftHW_desc.do_bitrev);
-	iowrite32(dev, FFT_LOG_LEN_REG, fftHW_desc.log_len);
-	iowrite32(dev, SRC_OFFSET_REG, 0);
-	iowrite32(dev, DST_OFFSET_REG, in_size);
+	iowrite32(fft_dev, COHERENCE_REG, fftHW_desc.coherence);
+	iowrite32(fft_dev, FFT_DO_PEAK_REG, 0);
+	iowrite32(fft_dev, FFT_DO_BITREV_REG, fftHW_desc.do_bitrev);
+	iowrite32(fft_dev, FFT_LOG_LEN_REG, fftHW_desc.log_len);
+	iowrite32(fft_dev, SRC_OFFSET_REG, 0);
+	iowrite32(fft_dev, DST_OFFSET_REG, fftHW_in_size);
 
 	// Start accelerators
-	iowrite32(dev, CMD_REG, CMD_MASK_START);
+	iowrite32(fft_dev, CMD_REG, CMD_MASK_START);
 
-	load_aq();
+  int count = 0;
 
 	// Wait for completion
-	done = 0;
+	unsigned done = 0;
 	while (!done) {
-		done = ioread32(dev, STATUS_REG);
+		done = ioread32(fft_dev, STATUS_REG);
 		done &= STATUS_MASK_DONE;
+    count++;
 	}
 
-	iowrite32(dev, CMD_REG, 0x0);
-  #endif
+	iowrite32(fft_dev, CMD_REG, 0x0);
+
+  printf("count = %d\n", count);
 }
 #endif // HW_FFT
 
@@ -179,10 +182,13 @@ float calculate_peak_dist_from_fmcw(float* data)
   //for (int j = 0; j < 2 * fftHW_len; j++) {
   for (int j = 0; j < 2 * RADAR_N; j++) {
     //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
-    fftHW_lmem[j] = float2fx(data[j], FX_IL);
-    SDEBUG(if (j < 64) { 
-	    printf("FFT_IN_DATA %u : %f\n", j, data[j]);
-      });
+    fftHW_li_mem[j] = float2fx(data[j], FX_IL);
+    fftHW_lo_mem[j] = 0;
+    SDEBUG(
+      if (j < 64) { 
+	    printf("FFT_IN_DATA %u : %lx\n", j, data[j]);
+      }
+    );
   }
 
   fft_cvtin_stop = get_counter();
@@ -191,15 +197,19 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_in_hw(&fftHW_desc);
   fft_stop = get_counter();
 
+  printf("HW FFT done\n");
+
   fft_cvtout_start = get_counter();
 
   //for (int j = 0; j < 2 * fftHW_len; j++) {
   for (int j = 0; j < 2 * RADAR_N; j++) {
-    data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
+    data[j] = (float)fx2float(fftHW_lo_mem[j], FX_IL);
     //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
-    SDEBUG(if (j < 64) { 
-	    printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
-      });
+    SDEBUG(
+      if (j < 64) { 
+	    printf("FFT_OUT_DATA %u : %lx\n", j, data[j]);
+      }
+    );
   }
 
   fft_cvtout_stop = get_counter();
@@ -242,6 +252,9 @@ float calculate_peak_dist_from_fmcw(float* data)
       max_index = i;
     }
   }
+
+  // printf("max_index = %d RADAR_fs = %lx RADAR_N = %d RADAR_c = %lx RADAR_alpha = %lx\n", 
+  //   max_index, RADAR_fs, RADAR_N, RADAR_c, RADAR_alpha);
 
   float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
   //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
