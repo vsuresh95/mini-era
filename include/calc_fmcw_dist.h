@@ -15,7 +15,7 @@ extern float    RADAR_alpha; // Chirp rate (saw-tooth)
 extern size_t fftHW_in_size;
 
 extern struct esp_device *espdevs;
-extern struct esp_device *fft_dev, *vit_dev;
+extern struct esp_device *fft_dev;
 extern int ndev;
 
 /* Some function declarations */

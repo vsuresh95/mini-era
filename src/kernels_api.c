@@ -310,7 +310,7 @@ status_t init_rad_kernel()
   printf("fftHW_lmem = %p\n", fftHW_lmem);
 
   fftHW_li_mem = &(fftHW_lmem[0]);
-  fftHW_lo_mem = &(fftHW_lmem[fftHW_out_words_adj]);
+  fftHW_lo_mem = &(fftHW_lmem[fftHW_in_words_adj]);
   printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem);
 
 #ifdef HW_FFT
@@ -458,13 +458,16 @@ status_t init_vit_kernel()
   printf("vitHW_lmem = %p\n", vitHW_lmem);
 
   vitHW_li_mem = &(vitHW_lmem[0]);
-  vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
+  vitHW_lo_mem = &(vitHW_lmem[vitHW_in_words_adj]);
   printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
 
 #ifdef HW_VIT
 	ptable_vit = aligned_malloc(NCHUNK(vitHW_size) * sizeof(unsigned *));
-	for (int i = 0; i < NCHUNK(vitHW_size); i++)
+	for (int i = 0; i < NCHUNK(vitHW_size); i++) {
 		ptable_vit[i] = (unsigned *) &vitHW_lmem[i * (CHUNK_SIZE / sizeof(vitHW_token_t))];
+
+    printf("ptable_vit[%d] = %p\n", i, ptable_vit[i]);
+  }
 
 	// Pass common configuration parameters
 	iowrite32(vit_dev, SELECT_REG, ioread32(vit_dev, DEVID_REG));
@@ -474,7 +477,7 @@ status_t init_vit_kernel()
 #endif // if HW_VIT
 
   vitHW_desc.run = true;
-  vitHW_desc.coherence = ACC_COH_NONE;
+  vitHW_desc.coherence = ACC_COH_FULL;
   vitHW_desc.p2p_store = 0;
   vitHW_desc.p2p_nsrcs = 0;
 #endif
@@ -893,12 +896,12 @@ message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
     viterbi_messages_histogram[vit_msgs_size][trace_msg->msg_id]++; 
     int n_res_char;
     //BM: Uncommenting
-     result = decode(&(trace_msg->ofdm_p), &(trace_msg->frame_p), &(trace_msg->in_bits[0]), &n_res_char);
+    result = decode(&(trace_msg->ofdm_p), &(trace_msg->frame_p), &(trace_msg->in_bits[0]), &n_res_char);
     // descramble the output - put it in result
     int psdusize = trace_msg->frame_p.psdu_size;
     DEBUG(printf("  Calling the viterbi descrambler routine\n"));
     //BM: Uncommenting
-     descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
+    descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
 
    #if(0)
     printf(" PSDU %u : Msg : = `", psdusize);
@@ -1040,7 +1043,7 @@ void closeout_rad_kernel()
   printf("    %3s | %3s | %8s | %9s \n", "Set", "Idx", "Distance", "Occurs");
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    %3u | %3u | %8.3f | %9u \n", si, di, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
+      printf("    %3u | %3u | %d | %9u \n", si, di, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
     }
   }
 
@@ -1049,7 +1052,7 @@ void closeout_rad_kernel()
   
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    Set %u Entry %u Id %u Distance %f Occurs %u Histogram:\n", si, di, the_radar_return_dict[si][di].index, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
+      printf("    Set %u Entry %u Id %u Distance %d Occurs %u Histogram:\n", si, di, the_radar_return_dict[si][di].index, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
       for (int i = 0; i < 5; i++) {
 	      printf("    %7s | %9u \n", hist_pct_err_label[i], hist_pct_errs[si][di][i]);
 	      totals[i] += hist_pct_errs[si][di][i];

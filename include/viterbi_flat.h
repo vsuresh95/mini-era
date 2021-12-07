@@ -58,4 +58,6 @@ void viterbi_butterfly2_generic(unsigned char *symbols,
 unsigned char viterbi_get_output_generic(unsigned char *mm0,
 		unsigned char *pp0, int ntraceback, unsigned char *outbuf);
 
+extern struct esp_device *vit_dev;
+
 #endif

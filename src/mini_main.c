@@ -36,6 +36,28 @@ uint64_t start_exec_vit;
 uint64_t stop_exec_vit;
 uint64_t stop_prog;
 
+extern uint64_t calc_start;
+extern uint64_t fft_br_stop;
+extern uint64_t fft_cvtin_start;
+extern uint64_t fft_cvtin_stop;
+extern uint64_t fft_start;
+extern uint64_t fft_stop;
+extern uint64_t fft_cvtout_start;
+extern uint64_t fft_cvtout_stop;
+extern uint64_t fft_start;
+extern uint64_t fft_stop;
+extern uint64_t calc_stop;
+extern uint64_t cdfmcw_start;
+extern uint64_t cdfmcw_stop;
+
+extern uint64_t depunc_start;
+extern uint64_t depunc_stop;
+extern uint64_t dodec_start;
+extern uint64_t dodec_stop;
+
+extern uint64_t bitrev_start;
+extern uint64_t bitrev_stop;
+
 extern unsigned use_device_number;
 
 bool_t all_obstacle_lanes_mode = false;
@@ -124,7 +146,7 @@ int main(int argc, char *argv[])
  
  #if 1
   // hardcoded for 100 trace samples
-  for (int i = 0; i < 10; i++)
+  for (int i = 0; i < 100; i++)
   {
     if (!read_next_trace_record(vehicle_state))
     {
@@ -234,6 +256,31 @@ int main(int argc, char *argv[])
   closeout_cv_kernel();
   closeout_rad_kernel();
   closeout_vit_kernel();
+
+  printf("\nProgram total execution time     %lu cycles\n", stop_prog - start_prog);
+  printf("  iterate_rad_kernel run time    %lu cycles\n", stop_iter_rad - start_iter_rad);
+  printf("  iterate_vit_kernel run time    %lu cycles\n", stop_iter_vit - start_iter_vit);
+  printf("  iterate_cv_kernel run time     %lu cycles\n", stop_iter_cv - start_iter_cv);
+  printf("  execute_rad_kernel run time    %lu cycles\n", stop_exec_rad - stop_exec_rad);
+  printf("  execute_vit_kernel run time    %lu cycles\n", stop_exec_vit - start_exec_vit);
+  printf("  execute_cv_kernel run time     %lu cycles\n", stop_exec_cv - start_exec_cv);
+
+  // These are timings taken from called routines...
+  printf("\n");
+  printf("  fft-total   run time    %lu cycles\n", calc_stop - calc_start);
+ #ifdef HW_FFT
+  printf("  bitrev      run time    %lu cycles\n", fft_br_stop - calc_start);
+ #else 
+  printf("  bit-reverse run time    %lu cycles\n", bitrev_stop - bitrev_start);
+ #endif
+  printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_stop - fft_cvtin_start);
+  printf("  fft-comp    run time    %lu cycles\n", fft_stop - fft_start);
+  printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_stop - fft_cvtout_start);
+  printf("  calc-dist   run time    %lu cycles\n", cdfmcw_stop - cdfmcw_start);
+
+  printf("\n");
+  printf("  depuncture  run time    %lu cycles\n", depunc_stop - depunc_start);
+  printf("  do-decoding run time    %lu cycles\n", dodec_stop - dodec_start);
 
   printf("\nDone.\n");
   return 0;

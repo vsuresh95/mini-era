@@ -27,21 +27,7 @@
  * Major modifications by adding SSE2 code by Bogdan Diaconescu
  */
 #include <stdio.h>
-
-#ifdef HW_VIT
- #include <fcntl.h>
- #include <math.h>
- #include <pthread.h>
- #include <sys/types.h>
- #include <sys/mman.h>
- #include <sys/stat.h>
- #include <stdlib.h>
- #include <string.h>
- #include <time.h>
- #include <unistd.h>
-
- #include "contig.h"
-#endif
+#include "verbose.h"
 
 #include "base.h"
 #include "viterbi_flat.h"
@@ -49,8 +35,6 @@
 #include "get_counter.h"
 
 #ifdef HW_VIT
- extern int vitHW_fd;
- extern contig_handle_t vitHW_mem;
  extern uint8_t* vitHW_lmem;   // Pointer to local view of my contig alloc space
  extern uint8_t* vitHW_li_mem; // Pointer to input memory (local view)
  extern uint8_t* vitHW_lo_mem; // Pointer to output memory (local view)
@@ -60,6 +44,10 @@
  extern struct vitdodec_access vitHW_desc;
 
  #include "mini-era.h"
+
+ #define VITDODEC_CBPS_REG 0x48
+ #define VITDODEC_NTRACEBACK_REG 0x44
+ #define VITDODEC_DATA_BITS_REG 0x40
 #endif
 
 uint64_t depunc_start;
@@ -124,15 +112,41 @@ uint8_t* depuncture(uint8_t *in) {
 
 
 #ifdef HW_VIT
-static void do_decoding_hw(int *fd, struct vitdodec_access *desc)
+static void do_decoding_hw(struct vitdodec_access *desc)
 {
   //BM: REPLACE BELOW CTL CMD WITH DIRECT HW DESCRIPTORS
   //if (ioctl(*fd, VITDODEC_IOC_ACCESS, *desc)) {
   //  perror("IOCTL:");
   //  exit(EXIT_FAILURE);
   //}
-  
+
+	iowrite32(vit_dev, COHERENCE_REG, vitHW_desc.coherence);
+	iowrite32(vit_dev, VITDODEC_CBPS_REG, vitHW_desc.cbps);
+	iowrite32(vit_dev, VITDODEC_NTRACEBACK_REG, vitHW_desc.ntraceback);
+	iowrite32(vit_dev, VITDODEC_DATA_BITS_REG, vitHW_desc.data_bits);
+	iowrite32(vit_dev, SRC_OFFSET_REG, 0x0);
+	iowrite32(vit_dev, DST_OFFSET_REG, 0x0);
+
+  printf("vitHW_in_size = %d\n", vitHW_in_size);
+
+	// Start accelerators
+	iowrite32(vit_dev, CMD_REG, CMD_MASK_START);
+
+  int count = 0;
+
+	// Wait for completion
+	unsigned done = 0;
+	while (!done) {
+		done = ioread32(vit_dev, STATUS_REG);
+		done &= STATUS_MASK_DONE;
+    count++;
+	}
+
+	iowrite32(vit_dev, CMD_REG, 0x0);
+
+  printf("count = %d\n", count);
 }
+
 #endif
 
 /* This is the main "do_decoding" function; takes the necessary inputs
@@ -652,10 +666,10 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   DO_VERBOSE({
       DEBUG(printf("VBS: depunctured = [\n"));
       for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
-	if (ti > 0) { DEBUG(printf(", ")); }
-	if ((ti > 0) && ((ti % 8) == 0)) { DEBUG(printf("  ")); }
-	if ((ti > 0) && ((ti % 40) == 0)) { DEBUG(printf("\n")); }
-	DEBUG(printf("%02x", depunctured[ti]));
+	      if (ti > 0) { DEBUG(printf(", ")); }
+	      if ((ti > 0) && ((ti % 8) == 0)) { DEBUG(printf("  ")); }
+	      if ((ti > 0) && ((ti % 40) == 0)) { DEBUG(printf("\n")); }
+	      DEBUG(printf("%02x", depunctured[ti]));
       }
       DEBUG(printf("\n"));
     });
@@ -675,7 +689,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     int imi = 0;
     for (int ti = 0; ti < 2; ti ++) {
       for (int tj = 0; tj < 32; tj++) {
-	inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
+	      inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
       }
     }
     if (imi != 64) { DEBUG(printf("ERROR : imi = %u and should be 64\n", imi)); }
@@ -713,16 +727,17 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     vitHW_desc.cbps = ofdm->n_cbps;
     vitHW_desc.ntraceback = d_ntraceback;
     vitHW_desc.data_bits = frame->n_data_bits;
+    
+    printf("Set inMemory = %p  AND outMemory = %p\n", inMemory, outMemory);
+
+    printf("vitHW_desc.cbps = %u vitHW_desc.ntraceback = %u vitHW_desc.data_bits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits);
+
     //DEBUG(printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits));
-    do_decoding_hw(&vitHW_fd, &vitHW_desc);
+    do_decoding_hw(&vitHW_desc);
 #else
     // Call the viterbi_butterfly2_generic function using ESP interface
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
     dodec_stop = get_counter();
 
 #ifndef HW_VIT
