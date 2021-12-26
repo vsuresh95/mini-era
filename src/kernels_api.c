@@ -74,7 +74,8 @@ cv_dictionary_t the_cv_image_dict;
 unsigned int         crit_fft_samples_set = 0; // The FFT set used for radara returns.
 unsigned int         num_radar_samples_sets = 0;
 unsigned int         radar_dict_items_per_set = 0;
-radar_dict_entry_t** the_radar_return_dict;
+//BM: radar_dict_entry_t** the_radar_return_dict;
+radar_dict_entry_t* the_radar_return_dict;
 unsigned int         radar_log_nsamples_per_dict_set[MAX_RDICT_SAMPLE_SETS];
 
 unsigned radar_total_calc = 0;
@@ -198,7 +199,7 @@ status_t init_rad_kernel()
   printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set);
     
   //BM: Allocating memory space for the radar return dict
-  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
+  the_radar_return_dict = (radar_dict_entry_t*)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
   // the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
   if (the_radar_return_dict == NULL) {
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
@@ -245,15 +246,15 @@ status_t init_rad_kernel()
 	
       printf("  Reading rad dictionary set %u entry %u : %u %u %d\n", si, di, entry_id, entry_log_nsamples, (int)(entry_dist));
 
-      the_radar_return_dict[si][di].index = tot_index++;  // Set, and increment total index
-      the_radar_return_dict[si][di].set = si;
-      the_radar_return_dict[si][di].index_in_set = di;
-      the_radar_return_dict[si][di].return_id = entry_id;
-      the_radar_return_dict[si][di].log_nsamples = entry_log_nsamples;
-      the_radar_return_dict[si][di].distance =  entry_dist;
+      the_radar_return_dict[si*radar_dict_items_per_set+di].index = tot_index++;  // Set, and increment total index
+      the_radar_return_dict[si*radar_dict_items_per_set+di].set = si;
+      the_radar_return_dict[si*radar_dict_items_per_set+di].index_in_set = di;
+      the_radar_return_dict[si*radar_dict_items_per_set+di].return_id = entry_id;
+      the_radar_return_dict[si*radar_dict_items_per_set+di].log_nsamples = entry_log_nsamples;
+      the_radar_return_dict[si*radar_dict_items_per_set+di].distance =  entry_dist;
 
       for (int i = 0; i < 2*(1<<entry_log_nsamples); i++) {
-	      the_radar_return_dict[si][di].return_data[i] = norm_radar_01k[di][i];
+        the_radar_return_dict[si*radar_dict_items_per_set+di].return_data[i] = norm_radar_01k[di][i];
 	      tot_dict_values++;
 	      entry_dict_values++;
       }
@@ -744,17 +745,19 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]);
 
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
-  return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
+  //return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
+  return &(the_radar_return_dict[crit_fft_samples_set*radar_dict_items_per_set + tr_val]);
 }
   
 
 
 distance_t execute_rad_kernel(float * inputs)
 {
-  printf("In execute_rad_kernel\n");
+  printf("In execute_rad_kernel kernel\n");
 
   /* 2) Conduct distance estimation on the waveform */
   printf("  Calling calculate_peak_dist_from_fmcw\n");
+  printf(" BM: before call\n");
   distance_t dist = calculate_peak_dist_from_fmcw(inputs);
   printf("  Returning distance = %d\n", (int) dist);
   return dist;
@@ -887,6 +890,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
 
 message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
 {
+  printf("Inside execute_vit_kernel\n");
   // Send each message (here they are all the same) through the viterbi decoder
   message_t msg = num_message_t;
   uint8_t *result;
@@ -1043,7 +1047,7 @@ void closeout_rad_kernel()
   printf("    %3s | %3s | %8s | %9s \n", "Set", "Idx", "Distance", "Occurs");
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    %3u | %3u | %d | %9u \n", si, di, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
+      printf("    %3u | %3u | %d | %9u \n", si, di, the_radar_return_dict[si*radar_dict_items_per_set + di].distance, hist_distances[si][di]);
     }
   }
 
@@ -1052,7 +1056,7 @@ void closeout_rad_kernel()
   
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    Set %u Entry %u Id %u Distance %d Occurs %u Histogram:\n", si, di, the_radar_return_dict[si][di].index, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
+      printf("    Set %u Entry %u Id %u Distance %d Occurs %u Histogram:\n", si, di, the_radar_return_dict[si*radar_dict_items_per_set + di].index, the_radar_return_dict[si*radar_dict_items_per_set + di].distance, hist_distances[si][di]);
       for (int i = 0; i < 5; i++) {
 	      printf("    %7s | %9u \n", hist_pct_err_label[i], hist_pct_errs[si][di][i]);
 	      totals[i] += hist_pct_errs[si][di][i];
