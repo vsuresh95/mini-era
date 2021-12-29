@@ -114,11 +114,28 @@ uint8_t* depuncture(uint8_t *in) {
 #ifdef HW_VIT
 static void do_decoding_hw(struct vitdodec_access *desc)
 {
-  //BM: REPLACE BELOW CTL CMD WITH DIRECT HW DESCRIPTORS
-  //if (ioctl(*fd, VITDODEC_IOC_ACCESS, *desc)) {
-  //  perror("IOCTL:");
-  //  exit(EXIT_FAILURE);
-  //}
+  // Configure Spandex request types
+#if (SPANDEX_MODE > 1)
+	spandex_config_t spandex_config;
+	spandex_config.spandex_reg = 0;
+#if (SPANDEX_MODE == 2)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 1;
+#elif (SPANDEX_MODE == 3)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_type = 1;
+#elif (SPANDEX_MODE == 4)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_op = 1;
+	spandex_config.w_type = 1;
+	spandex_config.w_cid = 1;
+#endif
+	iowrite32(vit_dev, SPANDEX_REG, spandex_config.spandex_reg);
+#endif
 
 	iowrite32(vit_dev, COHERENCE_REG, vitHW_desc.coherence);
 	iowrite32(vit_dev, VITDODEC_CBPS_REG, vitHW_desc.cbps);
@@ -127,7 +144,7 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	iowrite32(vit_dev, SRC_OFFSET_REG, 0x0);
 	iowrite32(vit_dev, DST_OFFSET_REG, 0x0);
 
-  printf("vitHW_in_size = %d\n", vitHW_in_size);
+	MIN_DEBUG(printf("vitHW_in_size = %d\n", vitHW_in_size));
 
 	// Start accelerators
 	iowrite32(vit_dev, CMD_REG, CMD_MASK_START);
@@ -144,7 +161,7 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 
 	iowrite32(vit_dev, CMD_REG, 0x0);
 
-  printf("count = %d\n", count);
+  MIN_DEBUG(printf("count = %d\n", count));
 }
 
 #endif
@@ -686,23 +703,159 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     uint8_t outMemory[18585]; // This is "minimally sized for max entries"
    #endif
 
+#ifdef DOUBLE_WORD
+	int value_32_1;
+	int value_32_2;
+	int64_t value_64;
+#endif
+
     int imi = 0;
+#ifdef DOUBLE_WORD
+    for (int ti = 0; ti < 2; ti ++) {
+      for (int tj = 0; tj < 16; tj+=2) {
+	  	value_32_1 = d_branchtab27_generic[ti].c[tj];
+	  	value_32_2 = d_branchtab27_generic[ti].c[tj+1];
+
+	  	value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
+	  	value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+
+#if (SPANDEX_MODE == 3)
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2062B02B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+
+		imi+=2;
+#elif (SPANDEX_MODE == 4)
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2262B82B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+
+		imi+=2;
+#else
+		((int64_t*) inMemory)[imi/2] = value_64;
+
+		imi+=2;
+#endif
+      }
+    }
+#else
     for (int ti = 0; ti < 2; ti ++) {
       for (int tj = 0; tj < 32; tj++) {
 	      inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
       }
     }
+#endif
+
     if (imi != 64) { DEBUG(printf("ERROR : imi = %u and should be 64\n", imi)); }
-    // imi = 64;
+#ifdef DOUBLE_WORD
+    for (int ti = 0; ti < 6; ti+=2) {
+	  value_32_1 = d_depuncture_pattern[ti];
+	  value_32_2 = d_depuncture_pattern[ti+1];
+
+	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
+	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+
+#if (SPANDEX_MODE == 3)
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2062B02B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+
+		imi+=2;
+#elif (SPANDEX_MODE == 4)
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2262B82B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+
+		imi+=2;
+#else
+		((int64_t*) inMemory)[imi/2] = value_64;
+
+		imi+=2;
+#endif
+    }
+#else
     for (int ti = 0; ti < 6; ti ++) {
       inMemory[imi++] = d_depuncture_pattern[ti];
     }
+#endif
+
     if (imi != 70) { DEBUG(printf("ERROR : imi = %u and should be 70\n", imi)); }
-    // imi = 70
+
     imi += 2; // Padding
+
+#ifdef DOUBLE_WORD
+    for (int ti = 0; ti < MAX_ENCODED_BITS; ti+=2) {
+	  value_32_1 = depunctured[ti];
+	  value_32_2 = depunctured[ti+1];
+
+	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
+	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+
+#if (SPANDEX_MODE == 3)
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2062B02B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+
+		imi+=2;
+#elif (SPANDEX_MODE == 4)
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2262B82B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+
+		imi+=2;
+#else
+		((int64_t*) inMemory)[imi/2] = value_64;
+
+		imi+=2;
+#endif
+    }
+#else
     for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
       inMemory[imi++] = depunctured[ti];
     }
+#endif
 
     if (imi != 24852) { DEBUG(printf("ERROR : imi = %u and should be 24852\n", imi)); }
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
@@ -728,9 +881,9 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     vitHW_desc.ntraceback = d_ntraceback;
     vitHW_desc.data_bits = frame->n_data_bits;
     
-    printf("Set inMemory = %p  AND outMemory = %p\n", inMemory, outMemory);
+    MIN_DEBUG(printf("Set inMemory = %p  AND outMemory = %p\n", inMemory, outMemory));
 
-    printf("vitHW_desc.cbps = %u vitHW_desc.ntraceback = %u vitHW_desc.data_bits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits);
+    MIN_DEBUG(printf("vitHW_desc.cbps = %u vitHW_desc.ntraceback = %u vitHW_desc.data_bits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits));
 
     //DEBUG(printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits));
     do_decoding_hw(&vitHW_desc);

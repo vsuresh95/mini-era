@@ -195,28 +195,27 @@ status_t init_rad_kernel()
   num_radar_samples_sets = 1;
   radar_dict_items_per_set = 12;
 
-  printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set);
+  SIM_DEBUG(printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set));
     
   //BM: Allocating memory space for the radar return dict
-  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
-  // the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
+  // the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
+  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
   if (the_radar_return_dict == NULL) {
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
     return error;
   }
 
-  printf("the_radar_return_dict = %p, sizeof(radar_dict_entry_t) = %d\n", the_radar_return_dict, sizeof(radar_dict_entry_t));
-    
-  // for (int si = 0; si < num_radar_samples_sets; si++) {
-  //   the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
-  //   if (the_radar_return_dict[si] == NULL) {
-  //     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
-  //     return error;
-  //   }
+  SIM_DEBUG(printf("the_radar_return_dict = %p, sizeof(radar_dict_entry_t) = %d\n", the_radar_return_dict, sizeof(radar_dict_entry_t)));
+   
+  for (int si = 0; si < num_radar_samples_sets; si++) {
+    the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
+    if (the_radar_return_dict[si] == NULL) {
+      printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
+      return error;
+    }
 
-  //   printf("the_radar_return_dict[%d] = %p, sizeof(radar_dict_entry_t) = %d, MAX_RADAR_N = %d\n", si, the_radar_return_dict[si], sizeof(radar_dict_entry_t), MAX_RADAR_N);
-  // }
-
+    SIM_DEBUG(printf("the_radar_return_dict[%d] = %p, sizeof(radar_dict_entry_t) = %d, MAX_RADAR_N = %d\n", si, the_radar_return_dict[si], sizeof(radar_dict_entry_t), MAX_RADAR_N));
+  }
 
   unsigned tot_dict_values = 0;
   unsigned tot_index = 0;
@@ -243,7 +242,7 @@ status_t init_rad_kernel()
 	      exit(-2);
       }
 	
-      printf("  Reading rad dictionary set %u entry %u : %u %u %d\n", si, di, entry_id, entry_log_nsamples, (int)(entry_dist));
+      SIM_DEBUG(printf("  Reading rad dictionary set %u entry %u : %u %u %d\n", si, di, entry_id, entry_log_nsamples, (int)(entry_dist)));
 
       the_radar_return_dict[si][di].index = tot_index++;  // Set, and increment total index
       the_radar_return_dict[si][di].set = si;
@@ -258,14 +257,14 @@ status_t init_rad_kernel()
 	      entry_dict_values++;
       }
 
-      DEBUG(printf("    Read in dict set %u entry %u with %u total values\n", si, di, entry_dict_values));
+      SIM_DEBUG(printf("    Read in dict set %u entry %u with %u total values\n", si, di, entry_dict_values));
     } // for (int di across radar dictionary entries per set
 
     DEBUG(printf("   Done reading in Radar dictionary set %u\n", si));
   } // for (si across radar dictionary sets)
 
   DEBUG(printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values));
-  printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values);
+  SIM_DEBUG(printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values));
 
   // Initialize hist_pct_errs values
   for (int si = 0; si < num_radar_samples_sets; si++) {
@@ -389,7 +388,7 @@ status_t init_vit_kernel()
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
   {
-    printf("  Reading vit dictionary entry %u\n", i);
+    SIM_DEBUG(printf("  Reading vit dictionary entry %u\n", i));
 
     int mnum = mnum_mid[i][0];
     int mid = mnum_mid[i][1];
@@ -741,7 +740,7 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   DEBUG(printf("In iterate_rad_kernel\n"));
   unsigned tr_val = nearest_dist[vs.lane] / RADAR_BUCKET_DISTANCE;  // The proper message for this time step and car-lane
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
-  printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]);
+  MIN_DEBUG(printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]));
 
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
   return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
@@ -751,12 +750,12 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
 
 distance_t execute_rad_kernel(float * inputs)
 {
-  printf("In execute_rad_kernel\n");
+  MIN_DEBUG(printf("In execute_rad_kernel\n"));
 
   /* 2) Conduct distance estimation on the waveform */
-  printf("  Calling calculate_peak_dist_from_fmcw\n");
+  MIN_DEBUG(printf("  Calling calculate_peak_dist_from_fmcw\n"));
   distance_t dist = calculate_peak_dist_from_fmcw(inputs);
-  printf("  Returning distance = %d\n", (int) dist);
+  MIN_DEBUG(printf("  Returning distance = %d\n", (int) dist));
   return dist;
 }
 
@@ -781,7 +780,7 @@ void post_execute_rad_kernel(unsigned set, unsigned index, distance_t tr_dist, d
     pct_err = abs_err;
   }
   
-  DEBUG(printf("%f vs %f : ERROR : %f   ABS_ERR : %f PCT_ERR : %f\n", tr_dist, dist, error, abs_err, pct_err));
+  MIN_DEBUG(printf("%d vs %d : ERROR : %lx   ABS_ERR : %lx PCT_ERR : %lx\n", (int) tr_dist, (int) dist, error, abs_err, pct_err));
   //printf("IDX: %u :: %f vs %f : ERROR : %f   ABS_ERR : %f PCT_ERR : %f\n", index, tr_dist, dist, error, abs_err, pct_err);
   if (pct_err == 0.0) {
     hist_pct_errs[set][index][0]++;
@@ -949,7 +948,7 @@ vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t m
   
   if (distance <= THRESHOLD_1) {
     if (distance <= IMPACT_DISTANCE) {
-      printf("WHOOPS: We've suffered a collision on time_step %u!\n", time_step);
+      printf("WHOOPS: We've suffered a collision on time_step %u distance = %d!\n", time_step, (int) distance);
       new_vehicle_state.speed = 0.0;
       new_vehicle_state.active = false; // We should add visualizer stuff for this!
       return new_vehicle_state;

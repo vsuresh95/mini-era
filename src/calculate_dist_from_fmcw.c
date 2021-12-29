@@ -115,27 +115,27 @@ void fft_bit_reverse(float *w, unsigned int n, unsigned int bits)
 
 static void fft_in_hw(struct fftHW_access *desc)
 {
-// 	// Configure Spandex request types
-// #if (SPANDEX_MODE > 1)
-// 	spandex_config_t spandex_config;
-// 	spandex_config.spandex_reg = 0;
-// #if (SPANDEX_MODE == 2)
-// 	spandex_config.r_en = 1;
-// 	spandex_config.r_type = 1;
-// #elif (SPANDEX_MODE == 3)
-// 	spandex_config.r_en = 1;
-// 	spandex_config.r_type = 2;
-// 	spandex_config.w_en = 1;
-// 	spandex_config.w_type = 1;
-// #elif (SPANDEX_MODE == 4)
-// 	spandex_config.r_en = 1;
-// 	spandex_config.r_type = 2;
-// 	spandex_config.w_en = 1;
-// 	spandex_config.w_op = 1;
-// 	spandex_config.w_type = 1;
-// #endif
-// 	iowrite32(fft_dev, SPANDEX_REG, spandex_config.spandex_reg);
-// #endif
+	// Configure Spandex request types
+#if (SPANDEX_MODE > 1)
+	spandex_config_t spandex_config;
+	spandex_config.spandex_reg = 0;
+#if (SPANDEX_MODE == 2)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 1;
+#elif (SPANDEX_MODE == 3)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_type = 1;
+#elif (SPANDEX_MODE == 4)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_op = 1;
+	spandex_config.w_type = 1;
+#endif
+	iowrite32(fft_dev, SPANDEX_REG, spandex_config.spandex_reg);
+#endif
 
 	iowrite32(fft_dev, COHERENCE_REG, fftHW_desc.coherence);
 	iowrite32(fft_dev, FFT_DO_PEAK_REG, 0);
@@ -159,12 +159,18 @@ static void fft_in_hw(struct fftHW_access *desc)
 
 	iowrite32(fft_dev, CMD_REG, 0x0);
 
-  printf("count = %d\n", count);
+  MIN_DEBUG(printf("count = %d\n", count));
 }
 #endif // HW_FFT
 
 float calculate_peak_dist_from_fmcw(float* data)
 {
+#ifdef DOUBLE_WORD
+	int value_32_1;
+	int value_32_2;
+  int64_t value_64;
+#endif
+
   calc_start = get_counter();
 
 #ifdef HW_FFT
@@ -178,12 +184,48 @@ float calculate_peak_dist_from_fmcw(float* data)
 
   fft_cvtin_start = get_counter();
 
+#ifdef DOUBLE_WORD
+  // convert input to fixed point
+  for (int j = 0; j < 2 * RADAR_N; j+=2) {
+	  value_32_1 = float2fx(data[j], FX_IL);
+	  value_32_2 = float2fx(data[j+1], FX_IL);
+
+	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
+	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+
+#if (SPANDEX_MODE == 3)
+		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2062B02B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+#elif (SPANDEX_MODE == 4)
+		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x2262B82B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
+#else
+		((int64_t*) fftHW_li_mem)[j/2] = value_64;
+#endif
+#else
   // convert input to fixed point
   //for (int j = 0; j < 2 * fftHW_len; j++) {
   for (int j = 0; j < 2 * RADAR_N; j++) {
     //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
     fftHW_li_mem[j] = float2fx(data[j], FX_IL);
-    fftHW_lo_mem[j] = 0;
+#endif
+
     SDEBUG(
       if (j < 64) { 
 	    printf("FFT_IN_DATA %u : %lx\n", j, data[j]);
@@ -197,14 +239,51 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_in_hw(&fftHW_desc);
   fft_stop = get_counter();
 
-  printf("HW FFT done\n");
+  MIN_DEBUG(printf("HW FFT done\n"));
 
   fft_cvtout_start = get_counter();
 
-  //for (int j = 0; j < 2 * fftHW_len; j++) {
+#ifdef DOUBLE_WORD
+  // convert fixed point to output
+  for (int j = 0; j < 2 * RADAR_N; j+=2) {
+#if (SPANDEX_MODE == 2)
+		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x2002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#elif (SPANDEX_MODE > 2)
+		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x4002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#else
+		value_64 = ((uint64_t*) fftHW_lo_mem)[j/2];
+#endif
+
+	  value_32_1 = value_64 & 0xFFFFFFFF;
+    data[j] = (float)fx2float(value_32_1, FX_IL);
+
+	  value_32_2 = (value_64 >> 32) & 0xFFFFFFFF;
+    data[j+1] = (float)fx2float(value_32_2, FX_IL);
+#else
+  // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j++) {
     data[j] = (float)fx2float(fftHW_lo_mem[j], FX_IL);
     //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
+#endif
+
     SDEBUG(
       if (j < 64) { 
 	    printf("FFT_OUT_DATA %u : %lx\n", j, data[j]);
