@@ -18,6 +18,18 @@
 #ifndef H_VERBOSE_H
 #define H_VERBOSE_H
 
+#if 0
+#define SIM_DEBUG(x) x
+#else
+#define SIM_DEBUG(x)
+#endif
+
+#if 0
+#define MIN_DEBUG(x) x
+#else
+#define MIN_DEBUG(x)
+#endif
+
 #ifdef VERBOSE
 #define DEBUG(x) x
 #else

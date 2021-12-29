@@ -80,13 +80,13 @@ int main(int argc, char *argv[])
 
   // replaces sim opt "-f 0"
   crit_fft_samples_set = 0;
-  printf("Using Radar Dictionary samples set %u for the critical FFT tasks\n", crit_fft_samples_set);
+  SIM_DEBUG(printf("Using Radar Dictionary samples set %u for the critical FFT tasks\n", crit_fft_samples_set));
 
   // replaces sim opt "-v 2"
   vit_msgs_size = 2;
-  printf("Using viterbi message size %u = %s\n", vit_msgs_size, vit_msgs_size_str[vit_msgs_size]);
+  SIM_DEBUG(printf("Using viterbi message size %u = %s\n", vit_msgs_size, vit_msgs_size_str[vit_msgs_size]));
 
-  printf("Using %u maximum time steps (simulation)\n", max_time_steps);
+  SIM_DEBUG(printf("Using %u maximum time steps (simulation)\n", max_time_steps));
   //BM: Commenting
   //printf("Using viterbi messages per step behavior %u = %s\n", vit_msgs_per_step, vit_msgs_per_step_str[vit_msgs_per_step]);
 
@@ -114,10 +114,10 @@ int main(int argc, char *argv[])
 
   //BM: Runs sometimes do not reset timesteps unless in main()
   time_step = 0;   
-  printf("Doing initialization tasks...\n");
+  SIM_DEBUG(printf("Doing initialization tasks...\n"));
 
   // initialize radar kernel - set up buffer
-  printf("Initializing the Radar kernel...\n");
+  SIM_DEBUG(printf("Initializing the Radar kernel...\n"));
   if (!init_rad_kernel())
   {
     printf("Error: the radar kernel couldn't be initialized properly.\n");
@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
   }
 
   // initialize viterbi kernel - set up buffer
-  printf("Initializing the Viterbi kernel...\n");
+  SIM_DEBUG(printf("Initializing the Viterbi kernel...\n"));
   if (!init_vit_kernel())
   {
     printf("Error: the Viterbi decoding kernel couldn't be initialized properly.\n");
@@ -139,12 +139,11 @@ int main(int argc, char *argv[])
   vehicle_state.active  = true;
   vehicle_state.lane    = center;
   vehicle_state.speed   = 50;
-  printf("Vehicle starts with the following state: active: %u lane %u speed %d\n", vehicle_state.active, vehicle_state.lane, (int) vehicle_state.speed);
+  SIM_DEBUG(printf("Vehicle starts with the following state: active: %u lane %u speed %d\n", vehicle_state.active, vehicle_state.lane, (int) vehicle_state.speed));
 
   printf("Starting the main loop...\n");
   start_prog = get_counter();
  
- #if 1
   // hardcoded for 100 trace samples
   for (int i = 0; i < 100; i++)
   {
@@ -153,7 +152,7 @@ int main(int argc, char *argv[])
       break;
     }
     
-    printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed);
+    MIN_DEBUG(printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed));
 
     /* The computer vision kernel performs object recognition on the
      * next image, and returns the corresponding label. 
@@ -174,7 +173,7 @@ int main(int argc, char *argv[])
     float * ref_in = rdentry_p->return_data;
     float radar_inputs[2*RADAR_N];
 
-    printf("\nCopying radar inputs...\n");
+    MIN_DEBUG(printf("\nCopying radar inputs...\n"));
 
     for (int ii = 0; ii < 2*RADAR_N; ii++) {
       radar_inputs[ii] = ref_in[ii];
@@ -205,27 +204,23 @@ int main(int argc, char *argv[])
 
     // EXECUTE the kernels using the now known inputs 
     start_exec_cv = get_counter();
-    //BM: added print
-    printf("\nInvoking execute_cv_kernel...\n");
     label = execute_cv_kernel(cv_tr_label);
-    //BM: added print
-    printf("\nBack from execute_cv_kernel...\n");
     stop_exec_cv = get_counter();
 
     start_exec_rad = get_counter();
     //BM: added print
-    printf("\nInvoking execute_rad_kernel...\n");
+    MIN_DEBUG(printf("\nInvoking execute_rad_kernel...\n"));
     distance = execute_rad_kernel(radar_inputs);
     //BM: added print
-    printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance);
+    MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
     stop_exec_rad = get_counter();
 
     start_exec_vit = get_counter();
     //BM: added print
-    printf("\nInvoking execute_vit_kernel...\n");
+    MIN_DEBUG(printf("\nInvoking execute_vit_kernel...\n"));
     message = execute_vit_kernel(vdentry_p, num_vit_msgs);
     //BM: added print
-    printf("\nBack from execute_vit_kernel... message = %d\n", message);
+    MIN_DEBUG(printf("\nBack from execute_vit_kernel... message = %d\n", message));
     stop_exec_vit = get_counter();
 
     // POST-EXECUTE each kernels to gather stats, etc.
@@ -239,13 +234,12 @@ int main(int argc, char *argv[])
      * based on the currently perceived information. It returns the new
      * vehicle state.
      */
-    printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance);
+    MIN_DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance));
     vehicle_state = plan_and_control(label, distance, message, vehicle_state);
-    printf("New vehicle state: lane %u speed %d\n\n", vehicle_state.lane, (int) vehicle_state.speed);
+    MIN_DEBUG(printf("New vehicle state: lane %u speed %d\n\n", vehicle_state.lane, (int) vehicle_state.speed));
 
     time_step++;
   }
-  #endif
 
   stop_prog = get_counter();
 
