@@ -4,6 +4,27 @@
 #include <esp_accelerator.h>
 #include <esp_probe.h>
 
+#define SPANDEX_MODE 0
+
+#define DOUBLE_WORD
+
+typedef union
+{
+  struct
+  {
+    unsigned char r_en   : 1;
+    unsigned char r_op   : 1;
+    unsigned char r_type : 2;
+    unsigned char r_cid  : 4;
+    unsigned char w_en   : 1;
+    unsigned char w_op   : 1;
+    unsigned char w_type : 2;
+    unsigned char w_cid  : 4;
+	uint16_t reserved: 16;
+  };
+  uint32_t spandex_reg;
+} spandex_config_t;
+
 struct vitdodec_access {
 	uint8_t run;
 	uint8_t p2p_store;
