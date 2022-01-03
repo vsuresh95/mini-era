@@ -52,8 +52,10 @@
 
 uint64_t depunc_start;
 uint64_t depunc_stop;
+uint64_t depunc_intvl;
 uint64_t dodec_start;
 uint64_t dodec_stop;
+uint64_t dodec_intvl;
 
 #undef  GENERATE_CHECK_VALUES
 //#define  GENERATE_CHECK_VALUES
@@ -115,24 +117,23 @@ uint8_t* depuncture(uint8_t *in) {
 static void do_decoding_hw(struct vitdodec_access *desc)
 {
   // Configure Spandex request types
-#if (SPANDEX_MODE > 1)
+#if (VIT_SPANDEX_MODE > 1)
 	spandex_config_t spandex_config;
 	spandex_config.spandex_reg = 0;
-#if (SPANDEX_MODE == 2)
+#if (VIT_SPANDEX_MODE == 2)
 	spandex_config.r_en = 1;
 	spandex_config.r_type = 1;
-#elif (SPANDEX_MODE == 3)
+#elif (VIT_SPANDEX_MODE == 3)
 	spandex_config.r_en = 1;
 	spandex_config.r_type = 2;
 	spandex_config.w_en = 1;
 	spandex_config.w_type = 1;
-#elif (SPANDEX_MODE == 4)
+#elif (VIT_SPANDEX_MODE == 4)
 	spandex_config.r_en = 1;
 	spandex_config.r_type = 2;
 	spandex_config.w_en = 1;
 	spandex_config.w_op = 1;
 	spandex_config.w_type = 1;
-	spandex_config.w_cid = 1;
 #endif
 	iowrite32(vit_dev, SPANDEX_REG, spandex_config.spandex_reg);
 #endif
@@ -149,19 +150,19 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	// Start accelerators
 	iowrite32(vit_dev, CMD_REG, CMD_MASK_START);
 
-  int count = 0;
+  	int count = 0;
 
 	// Wait for completion
 	unsigned done = 0;
 	while (!done) {
 		done = ioread32(vit_dev, STATUS_REG);
 		done &= STATUS_MASK_DONE;
-    count++;
+    	count++;
 	}
 
 	iowrite32(vit_dev, CMD_REG, 0x0);
 
-  MIN_DEBUG(printf("count = %d\n", count));
+  	MIN_DEBUG(printf("count = %d\n", count));
 }
 
 #endif
@@ -679,6 +680,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   depunc_start = get_counter();
   uint8_t *depunctured = depuncture(in);
   depunc_stop = get_counter();
+  depunc_intvl += depunc_stop - depunc_start;
 
   DO_VERBOSE({
       DEBUG(printf("VBS: depunctured = [\n"));
@@ -704,22 +706,40 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
    #endif
 
 #ifdef DOUBLE_WORD
-	int value_32_1;
-	int value_32_2;
+	uint8_t value_32_1;
+	uint8_t value_32_2;
+	uint8_t value_32_3;
+	uint8_t value_32_4;
+	uint8_t value_32_5;
+	uint8_t value_32_6;
+	uint8_t value_32_7;
+	uint8_t value_32_8;
 	int64_t value_64;
 #endif
 
     int imi = 0;
 #ifdef DOUBLE_WORD
     for (int ti = 0; ti < 2; ti ++) {
-      for (int tj = 0; tj < 16; tj+=2) {
+      for (int tj = 0; tj < 32; tj+=8) {
 	  	value_32_1 = d_branchtab27_generic[ti].c[tj];
 	  	value_32_2 = d_branchtab27_generic[ti].c[tj+1];
+	  	value_32_3 = d_branchtab27_generic[ti].c[tj+2];
+	  	value_32_4 = d_branchtab27_generic[ti].c[tj+3];
+	  	value_32_5 = d_branchtab27_generic[ti].c[tj+4];
+	  	value_32_6 = d_branchtab27_generic[ti].c[tj+5];
+	  	value_32_7 = d_branchtab27_generic[ti].c[tj+6];
+	  	value_32_8 = d_branchtab27_generic[ti].c[tj+7];
 
-	  	value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
-	  	value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+	  	value_64 = ((int64_t) value_32_1) & 0xFF;
+	  	value_64 |= (((int64_t) value_32_2) << 8) & 0xFF00;
+	  	value_64 |= (((int64_t) value_32_3) << 16) & 0xFF0000;
+	  	value_64 |= (((int64_t) value_32_4) << 24) & 0xFF000000;
+	  	value_64 |= (((int64_t) value_32_5) << 32) & 0xFF00000000;
+	  	value_64 |= (((int64_t) value_32_6) << 40) & 0xFF0000000000;
+	  	value_64 |= (((int64_t) value_32_7) << 48) & 0xFF000000000000;
+	  	value_64 |= (((int64_t) value_32_8) << 56) & 0xFF00000000000000;
 
-#if (SPANDEX_MODE == 3)
+#if (VIT_SPANDEX_MODE == 3)
 		void* dst = (void*)((int64_t)(inMemory+imi));
 
 		asm volatile (
@@ -730,9 +750,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
-
-		imi+=2;
-#elif (SPANDEX_MODE == 4)
+#elif (VIT_SPANDEX_MODE == 4)
 		void* dst = (void*)((int64_t)(inMemory+imi));
 
 		asm volatile (
@@ -743,33 +761,41 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
-
-		imi+=2;
-#else
-		((int64_t*) inMemory)[imi/2] = value_64;
-
-		imi+=2;
-#endif
+#else // VIT_SPANDEX_MODE
+		((int64_t*) inMemory)[imi] = value_64;
+#endif // VIT_SPANDEX_MODE
+		imi+=8;
       }
     }
-#else
+#else // DOUBLE_WORD
     for (int ti = 0; ti < 2; ti ++) {
       for (int tj = 0; tj < 32; tj++) {
 	      inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
       }
     }
-#endif
+#endif // DOUBLE_WORD
 
-    if (imi != 64) { DEBUG(printf("ERROR : imi = %u and should be 64\n", imi)); }
+    if (imi != 64) { MIN_DEBUG(printf("ERROR : imi = %u and should be 64\n", imi)); }
+
 #ifdef DOUBLE_WORD
-    for (int ti = 0; ti < 6; ti+=2) {
-	  value_32_1 = d_depuncture_pattern[ti];
-	  value_32_2 = d_depuncture_pattern[ti+1];
+	{
+		int ti = 0;
 
-	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
-	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+		value_32_1 = d_depuncture_pattern[ti];
+		value_32_2 = d_depuncture_pattern[ti+1];
+		value_32_3 = d_depuncture_pattern[ti+2];
+		value_32_4 = d_depuncture_pattern[ti+3];
+		value_32_5 = d_depuncture_pattern[ti+4];
+		value_32_6 = d_depuncture_pattern[ti+5];
 
-#if (SPANDEX_MODE == 3)
+		value_64 = ((int64_t) value_32_1) & 0xFF;
+		value_64 |= (((int64_t) value_32_2) << 8) & 0xFF00;
+		value_64 |= (((int64_t) value_32_3) << 16) & 0xFF0000;
+		value_64 |= (((int64_t) value_32_4) << 24) & 0xFF000000;
+		value_64 |= (((int64_t) value_32_5) << 32) & 0xFF00000000;
+		value_64 |= (((int64_t) value_32_6) << 40) & 0xFF0000000000;
+
+#if (VIT_SPANDEX_MODE == 3)
 		void* dst = (void*)((int64_t)(inMemory+imi));
 
 		asm volatile (
@@ -780,9 +806,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
-
-		imi+=2;
-#elif (SPANDEX_MODE == 4)
+#elif (VIT_SPANDEX_MODE == 4)
 		void* dst = (void*)((int64_t)(inMemory+imi));
 
 		asm volatile (
@@ -793,71 +817,118 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
-
-		imi+=2;
-#else
-		((int64_t*) inMemory)[imi/2] = value_64;
-
-		imi+=2;
-#endif
-    }
-#else
+#else // VIT_SPANDEX_MODE
+		((int64_t*) inMemory)[imi] = value_64;
+#endif // VIT_SPANDEX_MODE
+		imi+=6;
+	}
+#else // DOUBLE_WORD
     for (int ti = 0; ti < 6; ti ++) {
       inMemory[imi++] = d_depuncture_pattern[ti];
     }
-#endif
+#endif // DOUBLE_WORD
 
-    if (imi != 70) { DEBUG(printf("ERROR : imi = %u and should be 70\n", imi)); }
+    if (imi != 70) { MIN_DEBUG(printf("ERROR : imi = %u and should be 70\n", imi)); }
 
     imi += 2; // Padding
 
 #ifdef DOUBLE_WORD
-    for (int ti = 0; ti < MAX_ENCODED_BITS; ti+=2) {
-	  value_32_1 = depunctured[ti];
-	  value_32_2 = depunctured[ti+1];
+	{
+		int ti = 0;
 
-	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
-	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
+	    for (ti = 0; ti < MAX_ENCODED_BITS-(MAX_ENCODED_BITS%8); ti+=8) {
+			value_32_1 = depunctured[ti];
+			value_32_2 = depunctured[ti+1];
+			value_32_3 = depunctured[ti+2];
+			value_32_4 = depunctured[ti+3];
+			value_32_5 = depunctured[ti+4];
+			value_32_6 = depunctured[ti+5];
+			value_32_7 = depunctured[ti+6];
+			value_32_8 = depunctured[ti+7];
 
-#if (SPANDEX_MODE == 3)
-		void* dst = (void*)((int64_t)(inMemory+imi));
+			value_64 = ((int64_t) value_32_1) & 0xFF;
+			value_64 |= (((int64_t) value_32_2) << 8) & 0xFF00;
+			value_64 |= (((int64_t) value_32_3) << 16) & 0xFF0000;
+			value_64 |= (((int64_t) value_32_4) << 24) & 0xFF000000;
+			value_64 |= (((int64_t) value_32_5) << 32) & 0xFF00000000;
+			value_64 |= (((int64_t) value_32_6) << 40) & 0xFF0000000000;
+			value_64 |= (((int64_t) value_32_7) << 48) & 0xFF000000000000;
+			value_64 |= (((int64_t) value_32_8) << 56) & 0xFF00000000000000;
 
-		asm volatile (
-			"mv t0, %0;"
-			"mv t1, %1;"
-			".word 0x2062B02B"
-			: 
-			: "r" (dst), "r" (value_64)
-			: "t0", "t1", "memory"
-		);
+#if (VIT_SPANDEX_MODE == 3)
+			void* dst = (void*)((int64_t)(inMemory+imi));
 
-		imi+=2;
-#elif (SPANDEX_MODE == 4)
-		void* dst = (void*)((int64_t)(inMemory+imi));
+			asm volatile (
+				"mv t0, %0;"
+				"mv t1, %1;"
+				".word 0x2062B02B"
+				: 
+				: "r" (dst), "r" (value_64)
+				: "t0", "t1", "memory"
+			);
+#elif (VIT_SPANDEX_MODE == 4)
+			void* dst = (void*)((int64_t)(inMemory+imi));
 
-		asm volatile (
-			"mv t0, %0;"
-			"mv t1, %1;"
-			".word 0x2262B82B"
-			: 
-			: "r" (dst), "r" (value_64)
-			: "t0", "t1", "memory"
-		);
+			asm volatile (
+				"mv t0, %0;"
+				"mv t1, %1;"
+				".word 0x2262B82B"
+				: 
+				: "r" (dst), "r" (value_64)
+				: "t0", "t1", "memory"
+			);
+#else // VIT_SPANDEX_MODE
+			((int64_t*) inMemory)[imi] = value_64;
+#endif // VIT_SPANDEX_MODE
+			imi+=8;
+	    }
+		{
+			value_32_1 = depunctured[ti];
+			value_32_2 = depunctured[ti+1];
+			value_32_3 = depunctured[ti+2];
+			value_32_4 = depunctured[ti+3];
 
-		imi+=2;
-#else
-		((int64_t*) inMemory)[imi/2] = value_64;
+			value_64 = ((int64_t) value_32_1) & 0xFF;
+			value_64 |= (((int64_t) value_32_2) << 8) & 0xFF00;
+			value_64 |= (((int64_t) value_32_3) << 16) & 0xFF0000;
+			value_64 |= (((int64_t) value_32_4) << 24) & 0xFF000000;
 
-		imi+=2;
-#endif
+#if (VIT_SPANDEX_MODE == 3)
+			void* dst = (void*)((int64_t)(inMemory+imi));
+
+			asm volatile (
+				"mv t0, %0;"
+				"mv t1, %1;"
+				".word 0x2062B02B"
+				: 
+				: "r" (dst), "r" (value_64)
+				: "t0", "t1", "memory"
+			);
+#elif (VIT_SPANDEX_MODE == 4)
+			void* dst = (void*)((int64_t)(inMemory+imi));
+
+			asm volatile (
+				"mv t0, %0;"
+				"mv t1, %1;"
+				".word 0x2262B82B"
+				: 
+				: "r" (dst), "r" (value_64)
+				: "t0", "t1", "memory"
+			);
+#else // VIT_SPANDEX_MODE
+			((int64_t*) inMemory)[imi] = value_64;
+#endif // VIT_SPANDEX_MODE
+			imi+=4;
+		}
     }
-#else
+#else // DOUBLE_WORD
     for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
       inMemory[imi++] = depunctured[ti];
     }
-#endif
+#endif // DOUBLE_WORD
 
-    if (imi != 24852) { DEBUG(printf("ERROR : imi = %u and should be 24852\n", imi)); }
+    if (imi != 24852) { MIN_DEBUG(printf("ERROR : imi = %u and should be 24852\n", imi)); }
+
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
     // Reset the output space (for cleaner testing results)
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
@@ -892,6 +963,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
     dodec_stop = get_counter();
+    dodec_intvl += dodec_stop - dodec_start;
 
 #ifndef HW_VIT
     // Copy the outputs back into the composite locations

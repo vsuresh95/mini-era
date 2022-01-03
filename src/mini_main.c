@@ -22,41 +22,58 @@
 #include "kernels_api.h"
 
 uint64_t start_prog;
+uint64_t stop_prog;
+uint64_t intvl_prog;
 uint64_t start_iter_cv;
 uint64_t stop_iter_cv;
+uint64_t intvl_iter_cv;
 uint64_t start_iter_rad;
 uint64_t stop_iter_rad;
+uint64_t intvl_iter_rad;
 uint64_t start_iter_vit;
 uint64_t stop_iter_vit;
+uint64_t intvl_iter_vit;
 uint64_t start_exec_cv;
 uint64_t stop_exec_cv;
+uint64_t intvl_exec_cv;
 uint64_t start_exec_rad;
 uint64_t stop_exec_rad;
+uint64_t intvl_exec_rad;
 uint64_t start_exec_vit;
 uint64_t stop_exec_vit;
-uint64_t stop_prog;
+uint64_t intvl_exec_vit;
 
 extern uint64_t calc_start;
+extern uint64_t calc_stop;
+extern uint64_t calc_intvl;
 extern uint64_t fft_br_stop;
+extern uint64_t fft_br_intvl;
 extern uint64_t fft_cvtin_start;
 extern uint64_t fft_cvtin_stop;
+extern uint64_t fft_cvtin_intvl;
 extern uint64_t fft_start;
 extern uint64_t fft_stop;
+extern uint64_t fft_intvl;
 extern uint64_t fft_cvtout_start;
 extern uint64_t fft_cvtout_stop;
+extern uint64_t fft_cvtout_intvl;
 extern uint64_t fft_start;
 extern uint64_t fft_stop;
-extern uint64_t calc_stop;
+extern uint64_t fft_intvl;
 extern uint64_t cdfmcw_start;
 extern uint64_t cdfmcw_stop;
+extern uint64_t cdfmcw_intvl;
 
 extern uint64_t depunc_start;
 extern uint64_t depunc_stop;
+extern uint64_t depunc_intvl;
 extern uint64_t dodec_start;
 extern uint64_t dodec_stop;
+extern uint64_t dodec_intvl;
 
 extern uint64_t bitrev_start;
 extern uint64_t bitrev_stop;
+extern uint64_t bitrev_intvl;
 
 extern unsigned use_device_number;
 
@@ -77,6 +94,23 @@ int main(int argc, char *argv[])
   message_t message;
 
   int opt;
+
+  intvl_prog = 0;
+  intvl_iter_rad = 0;
+  intvl_iter_vit = 0;
+  intvl_iter_cv = 0;
+  intvl_exec_rad = 0;
+  intvl_exec_vit = 0;
+  intvl_exec_cv = 0;
+  calc_intvl = 0;
+  fft_br_intvl = 0;
+  bitrev_intvl = 0;
+  fft_cvtin_intvl = 0;
+  fft_intvl = 0;
+  fft_cvtout_intvl = 0;
+  cdfmcw_intvl = 0;
+  depunc_intvl = 0;
+  dodec_intvl = 0;
 
   // replaces sim opt "-f 0"
   crit_fft_samples_set = 0;
@@ -161,6 +195,7 @@ int main(int argc, char *argv[])
     start_iter_cv = get_counter();
     label_t cv_tr_label = iterate_cv_kernel(vehicle_state);
     stop_iter_cv = get_counter();
+    intvl_iter_cv += stop_iter_cv - start_iter_cv;
 
     /* The radar kernel performs distance estimation on the next radar
      * data, and returns the estimated distance to the object.
@@ -168,6 +203,7 @@ int main(int argc, char *argv[])
     start_iter_rad = get_counter();
     radar_dict_entry_t* rdentry_p = iterate_rad_kernel(vehicle_state);
     stop_iter_rad = get_counter();
+    intvl_iter_rad += stop_iter_rad - start_iter_rad;
 
     distance_t rdict_dist = rdentry_p->distance;
     float * ref_in = rdentry_p->return_data;
@@ -193,6 +229,7 @@ int main(int argc, char *argv[])
     start_iter_vit = get_counter();
     vit_dict_entry_t* vdentry_p = iterate_vit_kernel(vehicle_state);
     stop_iter_vit = get_counter();
+    intvl_iter_vit += stop_iter_vit - start_iter_vit;
 
     // Here we will simulate multiple cases, based on global vit_msgs_behavior
     int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
@@ -206,6 +243,7 @@ int main(int argc, char *argv[])
     start_exec_cv = get_counter();
     label = execute_cv_kernel(cv_tr_label);
     stop_exec_cv = get_counter();
+    intvl_exec_cv += stop_exec_cv - start_exec_cv;
 
     start_exec_rad = get_counter();
     //BM: added print
@@ -214,6 +252,7 @@ int main(int argc, char *argv[])
     //BM: added print
     MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
     stop_exec_rad = get_counter();
+    intvl_exec_rad += stop_exec_rad - start_exec_rad;
 
     start_exec_vit = get_counter();
     //BM: added print
@@ -222,6 +261,7 @@ int main(int argc, char *argv[])
     //BM: added print
     MIN_DEBUG(printf("\nBack from execute_vit_kernel... message = %d\n", message));
     stop_exec_vit = get_counter();
+    intvl_exec_vit += stop_exec_vit - start_exec_vit;
 
     // POST-EXECUTE each kernels to gather stats, etc.
     post_execute_cv_kernel(cv_tr_label, label);
@@ -242,6 +282,7 @@ int main(int argc, char *argv[])
   }
 
   stop_prog = get_counter();
+  intvl_prog += stop_prog - start_prog;
 
   /* All the trace/simulation-time has been completed -- Quitting... */
   printf("\nRun completed %u time steps\n\n", time_step);
@@ -251,30 +292,30 @@ int main(int argc, char *argv[])
   closeout_rad_kernel();
   closeout_vit_kernel();
 
-  printf("\nProgram total execution time     %lu cycles\n", stop_prog - start_prog);
-  printf("  iterate_rad_kernel run time    %lu cycles\n", stop_iter_rad - start_iter_rad);
-  printf("  iterate_vit_kernel run time    %lu cycles\n", stop_iter_vit - start_iter_vit);
-  printf("  iterate_cv_kernel run time     %lu cycles\n", stop_iter_cv - start_iter_cv);
-  printf("  execute_rad_kernel run time    %lu cycles\n", stop_exec_rad - stop_exec_rad);
-  printf("  execute_vit_kernel run time    %lu cycles\n", stop_exec_vit - start_exec_vit);
-  printf("  execute_cv_kernel run time     %lu cycles\n", stop_exec_cv - start_exec_cv);
+  printf("\nProgram total execution time     %lu cycles\n", intvl_prog);
+  printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad);
+  printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit);
+  printf("  iterate_cv_kernel run time     %lu cycles\n", intvl_iter_cv);
+  printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad);
+  printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit);
+  printf("  execute_cv_kernel run time     %lu cycles\n", intvl_exec_cv);
 
   // These are timings taken from called routines...
   printf("\n");
-  printf("  fft-total   run time    %lu cycles\n", calc_stop - calc_start);
+  printf("  fft-total   run time    %lu cycles\n", calc_intvl);
  #ifdef HW_FFT
-  printf("  bitrev      run time    %lu cycles\n", fft_br_stop - calc_start);
+  printf("  bitrev      run time    %lu cycles\n", fft_br_intvl);
  #else 
-  printf("  bit-reverse run time    %lu cycles\n", bitrev_stop - bitrev_start);
+  printf("  bit-reverse run time    %lu cycles\n", bitrev_intvl);
  #endif
-  printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_stop - fft_cvtin_start);
-  printf("  fft-comp    run time    %lu cycles\n", fft_stop - fft_start);
-  printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_stop - fft_cvtout_start);
-  printf("  calc-dist   run time    %lu cycles\n", cdfmcw_stop - cdfmcw_start);
+  printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_intvl);
+  printf("  fft-comp    run time    %lu cycles\n", fft_intvl);
+  printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_intvl);
+  printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl);
 
   printf("\n");
-  printf("  depuncture  run time    %lu cycles\n", depunc_stop - depunc_start);
-  printf("  do-decoding run time    %lu cycles\n", dodec_stop - dodec_start);
+  printf("  depuncture  run time    %lu cycles\n", depunc_intvl);
+  printf("  do-decoding run time    %lu cycles\n", dodec_intvl);
 
   printf("\nDone.\n");
   return 0;

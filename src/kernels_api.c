@@ -1038,69 +1038,69 @@ void closeout_cv_kernel()
 
 void closeout_rad_kernel()
 {
-  printf("\nHistogram of Radar Distances:\n");
-  printf("    %3s | %3s | %8s | %9s \n", "Set", "Idx", "Distance", "Occurs");
+  MIN_DEBUG(printf("\nHistogram of Radar Distances:\n"));
+  MIN_DEBUG(printf("    %3s | %3s | %8s | %9s \n", "Set", "Idx", "Distance", "Occurs"));
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    %3u | %3u | %d | %9u \n", si, di, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
+      MIN_DEBUG(printf("    %3u | %3u | %d | %9u \n", si, di, the_radar_return_dict[si][di].distance, hist_distances[si][di]));
     }
   }
 
-  printf("\nHistogram of Radar Distance ABS-PCT-ERROR:\n");
+  MIN_DEBUG(printf("\nHistogram of Radar Distance ABS-PCT-ERROR:\n"));
   unsigned totals[] = {0, 0, 0, 0, 0};
   
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    Set %u Entry %u Id %u Distance %d Occurs %u Histogram:\n", si, di, the_radar_return_dict[si][di].index, the_radar_return_dict[si][di].distance, hist_distances[si][di]);
+      MIN_DEBUG(printf("    Set %u Entry %u Id %u Distance %d Occurs %u Histogram:\n", si, di, the_radar_return_dict[si][di].index, the_radar_return_dict[si][di].distance, hist_distances[si][di]));
       for (int i = 0; i < 5; i++) {
-	      printf("    %7s | %9u \n", hist_pct_err_label[i], hist_pct_errs[si][di][i]);
+	      MIN_DEBUG(printf("    %7s | %9u \n", hist_pct_err_label[i], hist_pct_errs[si][di][i]));
 	      totals[i] += hist_pct_errs[si][di][i];
       }
     }
   }
 
-  printf("\n  TOTALS Histogram of Radar Distance ABS-PCT-ERROR:\n");
+  MIN_DEBUG(printf("\n  TOTALS Histogram of Radar Distance ABS-PCT-ERROR:\n"));
   for (int i = 0; i < 5; i++) {
-    printf("  %7s | %9u \n", hist_pct_err_label[i], totals[i]);
+    MIN_DEBUG(printf("  %7s | %9u \n", hist_pct_err_label[i], totals[i]));
   }
 
 
-  printf("\nHistogram of Radar Task Inputs Used:\n");
-  printf("    %3s | %5s | %9s \n", "Set", "Entry", "NumOccurs");
+  MIN_DEBUG(printf("\nHistogram of Radar Task Inputs Used:\n"));
+  MIN_DEBUG(printf("    %3s | %5s | %9s \n", "Set", "Entry", "NumOccurs"));
   for (int si = 0; si < num_radar_samples_sets; si++) {
     for (int di = 0; di < radar_dict_items_per_set; di++) {
-      printf("    %3u | %3u | %9u \n", si, di, radar_inputs_histogram[si][di]);
+      MIN_DEBUG(printf("    %3u | %3u | %9u \n", si, di, radar_inputs_histogram[si][di]));
     }
   }
-  printf("\n");
+  MIN_DEBUG(printf("\n"));
 }
 
 void closeout_vit_kernel()
 {
   // Nothing to do?
 
-  printf("\nHistogram of Total Objects:\n");
+  MIN_DEBUG(printf("\nHistogram of Total Objects:\n"));
   unsigned sum = 0;
   for (int i = 0; i < NUM_LANES * MAX_OBJ_IN_LANE; i++) {
     if (hist_total_objs[i] != 0) {
-      printf("%3u | %9u \n", i, hist_total_objs[i]);
+      MIN_DEBUG(printf("%3u | %9u \n", i, hist_total_objs[i]));
       sum += i*hist_total_objs[i];
     }
   }
   double avg_objs = (1.0 * sum)/(1.0 * radar_total_calc); // radar_total_calc == total time steps
-  printf("There were %d obstacles per time step (average)\n", (int) avg_objs);
+  MIN_DEBUG(printf("There were %d obstacles per time step (average)\n", (int) avg_objs));
   double avg_msgs = (1.0 * total_msgs)/(1.0 * radar_total_calc); // radar_total_calc == total time steps
-  printf("There were %d messages per time step (average)\n", (int) avg_msgs);
-  printf("There were %u bad decodes of the %u messages\n", bad_decode_msgs, total_msgs);
+  MIN_DEBUG(printf("There were %d messages per time step (average)\n", (int) avg_msgs));
+  MIN_DEBUG(printf("There were %u bad decodes of the %u messages\n", bad_decode_msgs, total_msgs));
 
-  printf("\nHistogram of Viterbi Messages:\n");
-  printf("    %3s | %3s | %9s \n", "Len", "Msg", "NumOccurs");
+  MIN_DEBUG(printf("\nHistogram of Viterbi Messages:\n"));
+  MIN_DEBUG(printf("    %3s | %3s | %9s \n", "Len", "Msg", "NumOccurs"));
   for (int li = 0; li < VITERBI_MSG_LENGTHS; li++) {
     for (int mi = 0; mi < NUM_MESSAGES; mi++) {
-      printf("    %3u | %3u | %9u \n", li, mi, viterbi_messages_histogram[li][mi]);
+      MIN_DEBUG(printf("    %3u | %3u | %9u \n", li, mi, viterbi_messages_histogram[li][mi]));
     }
   }
-  printf("\n");
+  MIN_DEBUG(printf("\n"));
 }
 
 

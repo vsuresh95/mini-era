@@ -9,18 +9,22 @@
 #include "calc_fmcw_dist.h"
 
 uint64_t calc_start;
+uint64_t calc_stop;
+uint64_t calc_intvl;
 uint64_t fft_br_stop;
+uint64_t fft_br_intvl;
 uint64_t fft_cvtin_start;
 uint64_t fft_cvtin_stop;
+uint64_t fft_cvtin_intvl;
 uint64_t fft_start;
 uint64_t fft_stop;
+uint64_t fft_intvl;
 uint64_t fft_cvtout_start;
 uint64_t fft_cvtout_stop;
-uint64_t fft_start;
-uint64_t fft_stop;
-uint64_t calc_stop;
+uint64_t fft_cvtout_intvl;
 uint64_t cdfmcw_start;
 uint64_t cdfmcw_stop;
+uint64_t cdfmcw_intvl;
 
 unsigned RADAR_LOGN    = 0;   // Log2 of the number of samples
 unsigned RADAR_N       = 0;   // The number of samples (2^LOGN)
@@ -116,18 +120,18 @@ void fft_bit_reverse(float *w, unsigned int n, unsigned int bits)
 static void fft_in_hw(struct fftHW_access *desc)
 {
 	// Configure Spandex request types
-#if (SPANDEX_MODE > 1)
+#if (FFT_SPANDEX_MODE > 1)
 	spandex_config_t spandex_config;
 	spandex_config.spandex_reg = 0;
-#if (SPANDEX_MODE == 2)
+#if (FFT_SPANDEX_MODE == 2)
 	spandex_config.r_en = 1;
 	spandex_config.r_type = 1;
-#elif (SPANDEX_MODE == 3)
+#elif (FFT_SPANDEX_MODE == 3)
 	spandex_config.r_en = 1;
 	spandex_config.r_type = 2;
 	spandex_config.w_en = 1;
 	spandex_config.w_type = 1;
-#elif (SPANDEX_MODE == 4)
+#elif (FFT_SPANDEX_MODE == 4)
 	spandex_config.r_en = 1;
 	spandex_config.r_type = 2;
 	spandex_config.w_en = 1;
@@ -181,6 +185,7 @@ float calculate_peak_dist_from_fmcw(float* data)
  #endif // HW_FFT
 
   fft_br_stop = get_counter();
+  fft_br_intvl += fft_br_stop - calc_start;
 
   fft_cvtin_start = get_counter();
 
@@ -193,7 +198,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
 	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
 
-#if (SPANDEX_MODE == 3)
+#if (FFT_SPANDEX_MODE == 3)
 		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
 
 		asm volatile (
@@ -204,7 +209,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
-#elif (SPANDEX_MODE == 4)
+#elif (FFT_SPANDEX_MODE == 4)
 		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
 
 		asm volatile (
@@ -234,10 +239,12 @@ float calculate_peak_dist_from_fmcw(float* data)
   }
 
   fft_cvtin_stop = get_counter();
+  fft_cvtin_intvl += fft_cvtin_stop - fft_cvtin_start;
 
   fft_start = get_counter();
   fft_in_hw(&fftHW_desc);
   fft_stop = get_counter();
+  fft_intvl += fft_stop - fft_start;
 
   MIN_DEBUG(printf("HW FFT done\n"));
 
@@ -246,7 +253,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 #ifdef DOUBLE_WORD
   // convert fixed point to output
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
-#if (SPANDEX_MODE == 2)
+#if (FFT_SPANDEX_MODE == 2)
 		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
 
 		asm volatile (
@@ -257,7 +264,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "r" (dst)
 			: "t0", "t1", "memory"
 		);
-#elif (SPANDEX_MODE > 2)
+#elif (FFT_SPANDEX_MODE > 2)
 		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
 
 		asm volatile (
@@ -292,6 +299,7 @@ float calculate_peak_dist_from_fmcw(float* data)
   }
 
   fft_cvtout_stop = get_counter();
+  fft_cvtout_intvl += fft_cvtout_stop - fft_cvtout_start;
 
 #else // if HW_FFT
 
@@ -312,10 +320,12 @@ float calculate_peak_dist_from_fmcw(float* data)
   /* } */
 
   fft_stop = get_counter();
+  fft_intvl += fft_stop - fft_start;
 
 #endif // if HW_FFT
 
   calc_stop = get_counter();
+  calc_intvl += calc_stop - calc_start;
 
   cdfmcw_start = get_counter();
 
@@ -339,6 +349,7 @@ float calculate_peak_dist_from_fmcw(float* data)
   //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
 
   cdfmcw_stop = get_counter();
+  cdfmcw_intvl += cdfmcw_stop - cdfmcw_start;
   //printf("max_psd = %f  vs %f\n", max_psd, 1e-10*pow(8192,2));
 
   if (max_psd > RADAR_psd_threshold) {

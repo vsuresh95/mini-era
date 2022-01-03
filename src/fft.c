@@ -72,6 +72,7 @@
 
 uint64_t bitrev_start;
 uint64_t bitrev_stop;
+uint64_t bitrev_intvl;
 
 static unsigned int
 _rev (unsigned int v)
@@ -149,6 +150,7 @@ fft(float * data, unsigned int N, unsigned int logn, int sign)
   bitrev_start = get_counter();
   bit_reverse (data, N, logn);
   bitrev_stop = get_counter();
+  bitrev_intvl = bitrev_stop - bitrev_start;
 
   /* calculation */
   //printf("\nSTART,A,B,I,J,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n", "2*j", "Data", "2*j+1", "Data", "2*i", "Data", "2*i+1", "Data", "t_real", "t_imag");

@@ -4,10 +4,6 @@
 #include <esp_accelerator.h>
 #include <esp_probe.h>
 
-#define SPANDEX_MODE 0
-
-#define DOUBLE_WORD
-
 typedef union
 {
   struct
