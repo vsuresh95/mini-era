@@ -330,7 +330,11 @@ status_t init_rad_kernel()
 #endif // if HW_FFT
 
   fftHW_desc.run = true;
-  fftHW_desc.coherence = ACC_COH_FULL;
+#if (SPANDEX_MODE == 0)
+	fftHW_desc.coherence = ACC_COH_RECALL;
+#else
+	fftHW_desc.coherence = ACC_COH_FULL;
+#endif
   fftHW_desc.p2p_store = 0;
   fftHW_desc.p2p_nsrcs = 0;
 
@@ -476,7 +480,11 @@ status_t init_vit_kernel()
 #endif // if HW_VIT
 
   vitHW_desc.run = true;
-  vitHW_desc.coherence = ACC_COH_FULL;
+#if (SPANDEX_MODE == 0)
+	vitHW_desc.coherence = ACC_COH_RECALL;
+#else
+	vitHW_desc.coherence = ACC_COH_FULL;
+#endif
   vitHW_desc.p2p_store = 0;
   vitHW_desc.p2p_nsrcs = 0;
 #endif

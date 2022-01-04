@@ -150,6 +150,8 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	// Start accelerators
 	iowrite32(vit_dev, CMD_REG, CMD_MASK_START);
 
+	load_aq();
+
   	int count = 0;
 
 	// Wait for completion
@@ -756,7 +758,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
-			".word 0x2262B82B"
+			".word 0x2462B82B"
 			: 
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
@@ -812,7 +814,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
-			".word 0x2262B82B"
+			".word 0x2462B82B"
 			: 
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
@@ -872,7 +874,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			asm volatile (
 				"mv t0, %0;"
 				"mv t1, %1;"
-				".word 0x2262B82B"
+				".word 0x2462B82B"
 				: 
 				: "r" (dst), "r" (value_64)
 				: "t0", "t1", "memory"
@@ -910,7 +912,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			asm volatile (
 				"mv t0, %0;"
 				"mv t1, %1;"
-				".word 0x2262B82B"
+				".word 0x2462B82B"
 				: 
 				: "r" (dst), "r" (value_64)
 				: "t0", "t1", "memory"
@@ -942,6 +944,8 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     }
     DEBUG(printf("LAST-INPUT\n\n\n"));
 #endif
+
+	store_rl();
 
     // Call the do_decoding routine
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)

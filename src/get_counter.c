@@ -13,3 +13,15 @@ uint64_t get_counter() {
 
   return counter;
 }
+
+void load_aq () {
+#if(SPANDEX_MODE == 2)
+	asm volatile ("fence r, r");
+#endif
+}
+
+void store_rl () {
+#if(SPANDEX_MODE > 1)
+	asm volatile ("fence w, w");
+#endif
+}

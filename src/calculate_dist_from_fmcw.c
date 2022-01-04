@@ -151,6 +151,8 @@ static void fft_in_hw(struct fftHW_access *desc)
 	// Start accelerators
 	iowrite32(fft_dev, CMD_REG, CMD_MASK_START);
 
+	load_aq();
+
   int count = 0;
 
 	// Wait for completion
@@ -240,6 +242,8 @@ float calculate_peak_dist_from_fmcw(float* data)
 
   fft_cvtin_stop = get_counter();
   fft_cvtin_intvl += fft_cvtin_stop - fft_cvtin_start;
+
+	store_rl();
 
   fft_start = get_counter();
   fft_in_hw(&fftHW_desc);
