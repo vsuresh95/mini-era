@@ -295,10 +295,8 @@ int main(int argc, char *argv[])
   printf("\nProgram total execution time     %lu cycles\n", intvl_prog);
   printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad);
   printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit);
-  printf("  iterate_cv_kernel run time     %lu cycles\n", intvl_iter_cv);
   printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad);
   printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit);
-  printf("  execute_cv_kernel run time     %lu cycles\n", intvl_exec_cv);
 
   // These are timings taken from called routines...
   printf("\n");
