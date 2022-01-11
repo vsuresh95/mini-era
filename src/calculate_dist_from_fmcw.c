@@ -141,15 +141,17 @@ static void fft_in_hw(struct fftHW_access *desc)
 	iowrite32(fft_dev, SPANDEX_REG, spandex_config.spandex_reg);
 #endif
 
-	iowrite32(fft_dev, COHERENCE_REG, fftHW_desc.coherence);
+	iowrite32(fft_dev, COHERENCE_REG, desc->coherence);
 	iowrite32(fft_dev, FFT_DO_PEAK_REG, 0);
-	iowrite32(fft_dev, FFT_DO_BITREV_REG, fftHW_desc.do_bitrev);
-	iowrite32(fft_dev, FFT_LOG_LEN_REG, fftHW_desc.log_len);
+	iowrite32(fft_dev, FFT_DO_BITREV_REG, desc->do_bitrev);
+	iowrite32(fft_dev, FFT_LOG_LEN_REG, desc->log_len);
 	iowrite32(fft_dev, SRC_OFFSET_REG, 0);
 	iowrite32(fft_dev, DST_OFFSET_REG, fftHW_in_size);
 
 	// Start accelerators
 	iowrite32(fft_dev, CMD_REG, CMD_MASK_START);
+
+  fft_start = get_counter();
 
 	load_aq();
 
@@ -163,7 +165,12 @@ static void fft_in_hw(struct fftHW_access *desc)
     count++;
 	}
 
+  fft_stop = get_counter();
+  fft_intvl += fft_stop - fft_start;
+
 	iowrite32(fft_dev, CMD_REG, 0x0);
+
+	// printf("fft interval = %lu\n", fft_stop - fft_start);
 
   MIN_DEBUG(printf("count = %d\n", count));
 }
@@ -245,10 +252,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 
 	store_rl();
 
-  fft_start = get_counter();
   fft_in_hw(&fftHW_desc);
-  fft_stop = get_counter();
-  fft_intvl += fft_stop - fft_start;
 
   MIN_DEBUG(printf("HW FFT done\n"));
 

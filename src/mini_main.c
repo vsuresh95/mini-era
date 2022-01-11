@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
   start_prog = get_counter();
  
   // hardcoded for 100 trace samples
-  for (int i = 0; i < 100; i++)
+  for (int i = 0; i < ITERATIONS; i++)
   {
     if (!read_next_trace_record(vehicle_state))
     {

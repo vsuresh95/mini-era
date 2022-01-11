@@ -138,10 +138,10 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	iowrite32(vit_dev, SPANDEX_REG, spandex_config.spandex_reg);
 #endif
 
-	iowrite32(vit_dev, COHERENCE_REG, vitHW_desc.coherence);
-	iowrite32(vit_dev, VITDODEC_CBPS_REG, vitHW_desc.cbps);
-	iowrite32(vit_dev, VITDODEC_NTRACEBACK_REG, vitHW_desc.ntraceback);
-	iowrite32(vit_dev, VITDODEC_DATA_BITS_REG, vitHW_desc.data_bits);
+	iowrite32(vit_dev, COHERENCE_REG, desc->coherence);
+	iowrite32(vit_dev, VITDODEC_CBPS_REG, desc->cbps);
+	iowrite32(vit_dev, VITDODEC_NTRACEBACK_REG, desc->ntraceback);
+	iowrite32(vit_dev, VITDODEC_DATA_BITS_REG, desc->data_bits);
 	iowrite32(vit_dev, SRC_OFFSET_REG, 0x0);
 	iowrite32(vit_dev, DST_OFFSET_REG, 0x0);
 
@@ -149,6 +149,8 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 
 	// Start accelerators
 	iowrite32(vit_dev, CMD_REG, CMD_MASK_START);
+
+    dodec_start = get_counter();
 
 	load_aq();
 
@@ -162,7 +164,12 @@ static void do_decoding_hw(struct vitdodec_access *desc)
     	count++;
 	}
 
+    dodec_stop = get_counter();
+    dodec_intvl += dodec_stop - dodec_start;
+
 	iowrite32(vit_dev, CMD_REG, 0x0);
+
+	// printf("decode interval = %lu\n", dodec_stop - dodec_start);
 
   	MIN_DEBUG(printf("count = %d\n", count));
 }
@@ -764,7 +771,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "t0", "t1", "memory"
 		);
 #else // VIT_SPANDEX_MODE
-		((int64_t*) inMemory)[imi] = value_64;
+		((int64_t*) inMemory)[imi/8] = value_64;
 #endif // VIT_SPANDEX_MODE
 		imi+=8;
       }
@@ -820,7 +827,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "t0", "t1", "memory"
 		);
 #else // VIT_SPANDEX_MODE
-		((int64_t*) inMemory)[imi] = value_64;
+		((int64_t*) inMemory)[imi/8] = value_64;
 #endif // VIT_SPANDEX_MODE
 		imi+=6;
 	}
@@ -880,7 +887,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 				: "t0", "t1", "memory"
 			);
 #else // VIT_SPANDEX_MODE
-			((int64_t*) inMemory)[imi] = value_64;
+			((int64_t*) inMemory)[imi/8] = value_64;
 #endif // VIT_SPANDEX_MODE
 			imi+=8;
 	    }
@@ -918,7 +925,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 				: "t0", "t1", "memory"
 			);
 #else // VIT_SPANDEX_MODE
-			((int64_t*) inMemory)[imi] = value_64;
+			((int64_t*) inMemory)[imi/8] = value_64;
 #endif // VIT_SPANDEX_MODE
 			imi+=4;
 		}
@@ -950,11 +957,10 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     // Call the do_decoding routine
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)
     //DEBUG(printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback));
-    dodec_start = get_counter();
 #ifdef HW_VIT
     vitHW_desc.cbps = ofdm->n_cbps;
     vitHW_desc.ntraceback = d_ntraceback;
-    vitHW_desc.data_bits = frame->n_data_bits;
+    vitHW_desc.data_bits = 288; // frame->n_data_bits;
     
     MIN_DEBUG(printf("Set inMemory = %p  AND outMemory = %p\n", inMemory, outMemory));
 
@@ -964,10 +970,13 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     do_decoding_hw(&vitHW_desc);
 #else
     // Call the viterbi_butterfly2_generic function using ESP interface
+    dodec_start = get_counter();
+
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
-#endif
+
     dodec_stop = get_counter();
     dodec_intvl += dodec_stop - dodec_start;
+#endif
 
 #ifndef HW_VIT
     // Copy the outputs back into the composite locations

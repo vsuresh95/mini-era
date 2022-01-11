@@ -330,7 +330,7 @@ status_t init_rad_kernel()
 #endif // if HW_FFT
 
   fftHW_desc.run = true;
-#if (SPANDEX_MODE == 0)
+#if (FFT_SPANDEX_MODE == 1)
 	fftHW_desc.coherence = ACC_COH_RECALL;
 #else
 	fftHW_desc.coherence = ACC_COH_FULL;
@@ -480,7 +480,7 @@ status_t init_vit_kernel()
 #endif // if HW_VIT
 
   vitHW_desc.run = true;
-#if (SPANDEX_MODE == 0)
+#if (VIT_SPANDEX_MODE == 1)
 	vitHW_desc.coherence = ACC_COH_RECALL;
 #else
 	vitHW_desc.coherence = ACC_COH_FULL;
