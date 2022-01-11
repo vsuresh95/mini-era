@@ -285,21 +285,19 @@ int main(int argc, char *argv[])
   intvl_prog += stop_prog - start_prog;
 
   /* All the trace/simulation-time has been completed -- Quitting... */
-  printf("\nRun completed %u time steps\n\n", time_step);
+  printf("\nRun completed %u time steps\n", time_step);
 
   /* All the traces have been fully consumed. Quitting... */
   closeout_cv_kernel();
   closeout_rad_kernel();
   closeout_vit_kernel();
 
-  printf("\nProgram total execution time     %lu cycles\n", intvl_prog);
   printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad);
   printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit);
-  printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad);
-  printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit);
 
   // These are timings taken from called routines...
   printf("\n");
+  printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad);
   printf("  fft-total   run time    %lu cycles\n", calc_intvl);
  #ifdef HW_FFT
   printf("  bitrev      run time    %lu cycles\n", fft_br_intvl);
@@ -312,8 +310,11 @@ int main(int argc, char *argv[])
   printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl);
 
   printf("\n");
+  printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit);
   printf("  depuncture  run time    %lu cycles\n", depunc_intvl);
   printf("  do-decoding run time    %lu cycles\n", dodec_intvl);
+
+  printf("\nProgram total execution time     %lu cycles\n", intvl_prog);
 
   printf("\nDone.\n");
   return 0;
