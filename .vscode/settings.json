@@ -1,6 +1,14 @@
 {
     "cmake.configureOnOpen": false,
     "files.associations": {
-        "viterbi_parms.h": "c"
+        "viterbi_parms.h": "c",
+        "bitset": "c",
+        "chrono": "c",
+        "algorithm": "c",
+        "__bit_reference": "c",
+        "map": "c",
+        "set": "c",
+        "unordered_map": "c",
+        "unordered_set": "c"
     }
 }

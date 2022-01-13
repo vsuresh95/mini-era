@@ -70,6 +70,15 @@ extern uint64_t depunc_intvl;
 extern uint64_t dodec_start;
 extern uint64_t dodec_stop;
 extern uint64_t dodec_intvl;
+extern uint64_t init_vit_buffer_start;
+extern uint64_t init_vit_buffer_stop;
+extern uint64_t init_vit_buffer_intvl;
+extern uint64_t copy_vit_buffer_start;
+extern uint64_t copy_vit_buffer_stop;
+extern uint64_t copy_vit_buffer_intvl;
+extern uint64_t descram_start;
+extern uint64_t descram_stop;
+extern uint64_t descram_intvl;
 
 extern uint64_t bitrev_start;
 extern uint64_t bitrev_stop;
@@ -111,6 +120,15 @@ int main(int argc, char *argv[])
   cdfmcw_intvl = 0;
   depunc_intvl = 0;
   dodec_intvl = 0;
+  init_vit_buffer_start = 0;
+  init_vit_buffer_stop = 0;
+  init_vit_buffer_intvl = 0;
+  copy_vit_buffer_start = 0;
+  copy_vit_buffer_stop = 0;
+  copy_vit_buffer_intvl = 0;
+  descram_start = 0;
+  descram_stop = 0;
+  descram_intvl = 0;
 
   // replaces sim opt "-f 0"
   crit_fft_samples_set = 0;
@@ -292,29 +310,32 @@ int main(int argc, char *argv[])
   closeout_rad_kernel();
   closeout_vit_kernel();
 
-  printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad);
-  printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit);
+  printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad/ITERATIONS);
+  printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit/ITERATIONS);
 
   // These are timings taken from called routines...
   printf("\n");
-  printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad);
-  printf("  fft-total   run time    %lu cycles\n", calc_intvl);
+  printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad/ITERATIONS);
+  printf("  fft-total   run time    %lu cycles\n", calc_intvl/ITERATIONS);
  #ifdef HW_FFT
-  printf("  bitrev      run time    %lu cycles\n", fft_br_intvl);
+  printf("  bitrev      run time    %lu cycles\n", fft_br_intvl/ITERATIONS);
  #else 
-  printf("  bit-reverse run time    %lu cycles\n", bitrev_intvl);
+  printf("  bit-reverse run time    %lu cycles\n", bitrev_intvl/ITERATIONS);
  #endif
-  printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_intvl);
-  printf("  fft-comp    run time    %lu cycles\n", fft_intvl);
-  printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_intvl);
-  printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl);
+  printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_intvl/ITERATIONS);
+  printf("  fft-comp    run time    %lu cycles\n", fft_intvl/ITERATIONS);
+  printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_intvl/ITERATIONS);
+  printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl/ITERATIONS);
 
   printf("\n");
-  printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit);
-  printf("  depuncture  run time    %lu cycles\n", depunc_intvl);
-  printf("  do-decoding run time    %lu cycles\n", dodec_intvl);
+  printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit/ITERATIONS);
+  printf("  init_vit_buffer run time    %lu cycles\n", init_vit_buffer_intvl/ITERATIONS);
+  printf("  depuncture  run time    %lu cycles\n", depunc_intvl/ITERATIONS);
+  printf("  do-decoding run time    %lu cycles\n", dodec_intvl/ITERATIONS);
+  printf("  copy_vit_buffer run time    %lu cycles\n", copy_vit_buffer_intvl/ITERATIONS);
+  printf("  descram run time    %lu cycles\n", descram_intvl/ITERATIONS);
 
-  printf("\nProgram total execution time     %lu cycles\n", intvl_prog);
+  printf("\nProgram total execution time     %lu cycles\n", intvl_prog/ITERATIONS);
 
   printf("\nDone.\n");
   return 0;

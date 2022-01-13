@@ -56,6 +56,12 @@ uint64_t depunc_intvl;
 uint64_t dodec_start;
 uint64_t dodec_stop;
 uint64_t dodec_intvl;
+uint64_t init_vit_buffer_start;
+uint64_t init_vit_buffer_stop;
+uint64_t init_vit_buffer_intvl;
+uint64_t copy_vit_buffer_start;
+uint64_t copy_vit_buffer_stop;
+uint64_t copy_vit_buffer_intvl;
 
 #undef  GENERATE_CHECK_VALUES
 //#define  GENERATE_CHECK_VALUES
@@ -726,6 +732,8 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 	int64_t value_64;
 #endif
 
+  	init_vit_buffer_start = get_counter();
+
     int imi = 0;
 #ifdef DOUBLE_WORD
     for (int ti = 0; ti < 2; ti ++) {
@@ -938,6 +946,9 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 
     if (imi != 24852) { MIN_DEBUG(printf("ERROR : imi = %u and should be 24852\n", imi)); }
 
+  	init_vit_buffer_stop = get_counter();
+  	init_vit_buffer_intvl += init_vit_buffer_stop - init_vit_buffer_start;
+	
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
     // Reset the output space (for cleaner testing results)
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
@@ -978,6 +989,8 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     dodec_intvl += dodec_stop - dodec_start;
 #endif
 
+  	copy_vit_buffer_start = get_counter();
+
 #ifndef HW_VIT
     // Copy the outputs back into the composite locations
     imi = 0; // start of the outputs
@@ -994,6 +1007,9 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     }
     //DEBUG(printf("\n\n"));
 #endif
+
+  	copy_vit_buffer_stop = get_counter();
+  	copy_vit_buffer_intvl += copy_vit_buffer_stop - copy_vit_buffer_start;
   }
 #ifdef GENERATE_CHECK_VALUES
   DEBUG(printf("LAST-OUTPUT\n\n"));

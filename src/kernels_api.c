@@ -100,6 +100,10 @@ unsigned viterbi_messages_histogram[VITERBI_MSG_LENGTHS][NUM_MESSAGES];
 unsigned total_msgs = 0; // Total messages decoded during the full run
 unsigned bad_decode_msgs = 0; // Total messages decoded incorrectly during the full run
 
+uint64_t descram_start;
+uint64_t descram_stop;
+uint64_t descram_intvl;
+
 #ifdef HW_VIT
 // These are Viterbi Harware Accelerator Variales, etc.
 char VIT_DEVNAME[128];
@@ -908,8 +912,14 @@ message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
     int psdusize = trace_msg->frame_p.psdu_size;
     DEBUG(printf("  Calling the viterbi descrambler routine\n"));
     //BM: Uncommenting
+
+  	descram_start = get_counter();
+
     descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
 
+  	descram_stop = get_counter();
+  	descram_intvl += descram_stop - descram_start;
+	
    #if(0)
     printf(" PSDU %u : Msg : = `", psdusize);
     for (int ci = 0; ci < (psdusize - 26); ci++) {
