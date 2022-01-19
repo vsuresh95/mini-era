@@ -228,7 +228,7 @@ status_t init_rad_kernel()
     radar_log_nsamples_per_dict_set[si] = 10;
     //BM
     //DEBUG(printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]));
-    printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]);
+    SIM_DEBUG(printf("  Dictionary set %u entries should all have %u log_nsamples\n", si, radar_log_nsamples_per_dict_set[si]));
 
     for (int di = 0; di < radar_dict_items_per_set; di++) {
       unsigned entry_id;
@@ -308,13 +308,13 @@ status_t init_rad_kernel()
   // #endif /* FFT_FX_WIDTH */
   // printf(" #define FX_IL %u\n", FX_IL);
 
-  printf("Allocate hardware buffer of size %d\n", fftHW_size);
+  SIM_DEBUG(printf("Allocate hardware buffer of size %d\n", fftHW_size));
   fftHW_lmem = (fftHW_token_t*)aligned_malloc(fftHW_size);
-  printf("fftHW_lmem = %p\n", fftHW_lmem);
+  SIM_DEBUG(printf("fftHW_lmem = %p\n", fftHW_lmem));
 
   fftHW_li_mem = &(fftHW_lmem[0]);
   fftHW_lo_mem = &(fftHW_lmem[fftHW_in_words_adj]);
-  printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem);
+  SIM_DEBUG(printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem));
 
 #ifdef HW_FFT
 	// ptable_fft = aligned_malloc(NCHUNK(radar_dict_items_per_set*sizeof(radar_dict_entry_t)) * sizeof(unsigned *));
@@ -323,7 +323,7 @@ status_t init_rad_kernel()
 	for (int i = 0; i < NCHUNK(fftHW_size); i++) {
 		ptable_fft[i] = (unsigned *) &fftHW_lmem[i * (CHUNK_SIZE / sizeof(fftHW_token_t))];
 
-    printf("ptable_fft[%d] = %p\n", i, ptable_fft[i]);
+    SIM_DEBUG(printf("ptable_fft[%d] = %p\n", i, ptable_fft[i]));
   }
 
 	// Pass common configuration parameters
@@ -383,7 +383,7 @@ status_t init_vit_kernel()
 
   // Read the number of messages
   num_viterbi_dictionary_items = 16;
-  printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items);
+  SIM_DEBUG(printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items));
 
   //BM
   the_viterbi_trace_dict = (vit_dict_entry_t*)aligned_malloc(num_viterbi_dictionary_items*sizeof(vit_dict_entry_t));
@@ -462,18 +462,18 @@ status_t init_vit_kernel()
   init_vit_parameters();
 
   vitHW_lmem = (vitHW_token_t*)aligned_malloc(vitHW_size);
-  printf("vitHW_lmem = %p\n", vitHW_lmem);
+  SIM_DEBUG(printf("vitHW_lmem = %p\n", vitHW_lmem));
 
   vitHW_li_mem = &(vitHW_lmem[0]);
   vitHW_lo_mem = &(vitHW_lmem[vitHW_in_words_adj]);
-  printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
+  SIM_DEBUG(printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem));
 
 #ifdef HW_VIT
 	ptable_vit = aligned_malloc(NCHUNK(vitHW_size) * sizeof(unsigned *));
 	for (int i = 0; i < NCHUNK(vitHW_size); i++) {
 		ptable_vit[i] = (unsigned *) &vitHW_lmem[i * (CHUNK_SIZE / sizeof(vitHW_token_t))];
 
-    printf("ptable_vit[%d] = %p\n", i, ptable_vit[i]);
+    SIM_DEBUG(printf("ptable_vit[%d] = %p\n", i, ptable_vit[i]));
   }
 
 	// Pass common configuration parameters
