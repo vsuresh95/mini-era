@@ -230,7 +230,16 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #else
-		((int64_t*) fftHW_li_mem)[j/2] = value_64;
+ 		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
+
+		asm volatile (
+			"mv t0, %0;"
+			"mv t1, %1;"
+			".word 0x0062B02B"
+			: 
+			: "r" (dst), "r" (value_64)
+			: "t0", "t1", "memory"
+		);
 #endif
 #else
   // convert input to fixed point
@@ -284,7 +293,16 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #else
-		value_64 = ((uint64_t*) fftHW_lo_mem)[j/2];
+		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x0002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
 #endif
 
 	  value_32_1 = value_64 & 0xFFFFFFFF;
@@ -296,7 +314,6 @@ float calculate_peak_dist_from_fmcw(float* data)
   // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j++) {
     data[j] = (float)fx2float(fftHW_lo_mem[j], FX_IL);
-    //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
 #endif
 
     SDEBUG(
@@ -350,15 +367,11 @@ float calculate_peak_dist_from_fmcw(float* data)
     }
   }
 
-  // printf("max_index = %d RADAR_fs = %lx RADAR_N = %d RADAR_c = %lx RADAR_alpha = %lx\n", 
-  //   max_index, RADAR_fs, RADAR_N, RADAR_c, RADAR_alpha);
 
   float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
-  //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
 
   cdfmcw_stop = get_counter();
   cdfmcw_intvl += cdfmcw_stop - cdfmcw_start;
-  //printf("max_psd = %f  vs %f\n", max_psd, 1e-10*pow(8192,2));
 
   if (max_psd > RADAR_psd_threshold) {
     return distance;

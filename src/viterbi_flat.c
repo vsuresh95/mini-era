@@ -779,7 +779,16 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "t0", "t1", "memory"
 		);
 #else // VIT_SPANDEX_MODE
-		((int64_t*) inMemory)[imi/8] = value_64;
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+  		asm volatile (
+  			"mv t0, %0;"
+  			"mv t1, %1;"
+  			".word 0x0062B02B"
+  			: 
+  			: "r" (dst), "r" (value_64)
+  			: "t0", "t1", "memory"
+  		);
 #endif // VIT_SPANDEX_MODE
 		imi+=8;
       }
@@ -835,7 +844,16 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			: "t0", "t1", "memory"
 		);
 #else // VIT_SPANDEX_MODE
-		((int64_t*) inMemory)[imi/8] = value_64;
+		void* dst = (void*)((int64_t)(inMemory+imi));
+
+  		asm volatile (
+  			"mv t0, %0;"
+  			"mv t1, %1;"
+  			".word 0x0062B02B"
+  			: 
+  			: "r" (dst), "r" (value_64)
+  			: "t0", "t1", "memory"
+  		);
 #endif // VIT_SPANDEX_MODE
 		imi+=6;
 	}
@@ -895,7 +913,16 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 				: "t0", "t1", "memory"
 			);
 #else // VIT_SPANDEX_MODE
-			((int64_t*) inMemory)[imi/8] = value_64;
+			void* dst = (void*)((int64_t)(inMemory+imi));
+
+	  		asm volatile (
+	  			"mv t0, %0;"
+	  			"mv t1, %1;"
+	  			".word 0x0062B02B"
+	  			: 
+	  			: "r" (dst), "r" (value_64)
+	  			: "t0", "t1", "memory"
+	  		);
 #endif // VIT_SPANDEX_MODE
 			imi+=8;
 	    }
@@ -933,7 +960,16 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 				: "t0", "t1", "memory"
 			);
 #else // VIT_SPANDEX_MODE
-			((int64_t*) inMemory)[imi/8] = value_64;
+			void* dst = (void*)((int64_t)(inMemory+imi));
+	
+	  		asm volatile (
+	  			"mv t0, %0;"
+	  			"mv t1, %1;"
+	  			".word 0x0062B02B"
+	  			: 
+	  			: "r" (dst), "r" (value_64)
+	  			: "t0", "t1", "memory"
+	  		);
 #endif // VIT_SPANDEX_MODE
 			imi+=4;
 		}
