@@ -271,21 +271,23 @@ status_t init_rad_kernel()
   SIM_DEBUG(printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values));
 
   // Initialize hist_pct_errs values
-  for (int si = 0; si < num_radar_samples_sets; si++) {
-    for (int di = 0; di < radar_dict_items_per_set; di++) {
-      hist_distances[si][di] = 0;
-      for (int i = 0; i < 5; i++) {
-	      hist_pct_errs[si][di][i] = 0;
+  // Clear the inputs (injected) histogram
+  MIN_DEBUG(
+    for (int si = 0; si < num_radar_samples_sets; si++) {
+      for (int di = 0; di < radar_dict_items_per_set; di++) {
+        hist_distances[si][di] = 0;
+        for (int i = 0; i < 5; i++) {
+	       hist_pct_errs[si][di][i] = 0;
+        }
       }
     }
-  }
 
-  //Clear the inputs (injected) histogram
-  for (int i = 0; i < MAX_RDICT_SAMPLE_SETS; i++) {
-    for (int j = 0; j < MAX_RDICT_ENTRIES; j++) {
-      radar_inputs_histogram[i][j] = 0;
+    for (int i = 0; i < MAX_RDICT_SAMPLE_SETS; i++) {
+      for (int j = 0; j < MAX_RDICT_ENTRIES; j++) {
+        radar_inputs_histogram[i][j] = 0;
+      }
     }
-  }
+  );
 
  #ifdef HW_FFT
   init_fft_parameters();
@@ -448,15 +450,18 @@ status_t init_vit_kernel()
   }
 
   //Clear the messages (injected) histogram
-  for (int i = 0; i < VITERBI_MSG_LENGTHS; i++) {
-    for (int j = 0; j < NUM_MESSAGES; j++) {
-      viterbi_messages_histogram[i][j] = 0;
+  MIN_DEBUG(
+    for (int i = 0; i < VITERBI_MSG_LENGTHS; i++) {
+      for (int j = 0; j < NUM_MESSAGES; j++) {
+        viterbi_messages_histogram[i][j] = 0;
+      }
     }
-  }
+  
 
-  for (int i = 0; i < NUM_LANES * MAX_OBJ_IN_LANE; i++) {
-    hist_total_objs[i] = 0;
-  }
+    for (int i = 0; i < NUM_LANES * MAX_OBJ_IN_LANE; i++) {
+      hist_total_objs[i] = 0;
+    }
+  );
 
 #ifdef HW_VIT
   init_vit_parameters();
