@@ -181,7 +181,12 @@ float calculate_peak_dist_from_fmcw(float* data)
 #ifdef DOUBLE_WORD
 	int value_32_1;
 	int value_32_2;
+  float value_32_1_f;
+  float value_32_2_f;
   int64_t value_64;
+
+  // unsigned shift_int = 0x3f800000 + 0x800000 * (32 - FX_IL);
+  // float *shift = (float *) &shift_int;
 #endif
 
   calc_start = get_counter();
@@ -203,6 +208,8 @@ float calculate_peak_dist_from_fmcw(float* data)
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
 	  value_32_1 = float2fx(data[j], FX_IL);
 	  value_32_2 = float2fx(data[j+1], FX_IL);
+	  // value_32_1 = (int)(data[j] * (*shift));
+	  // value_32_2 = (int)(data[j+1] * (*shift));
 
 	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
 	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
@@ -268,6 +275,11 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_cvtout_start = get_counter();
 
 #ifdef DOUBLE_WORD
+  float max_psd = 0;
+  unsigned int max_index = 0;
+  unsigned int i;
+  float temp;
+
   // convert fixed point to output
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
 #if (FFT_SPANDEX_MODE == 2)
@@ -306,25 +318,52 @@ float calculate_peak_dist_from_fmcw(float* data)
 #endif
 
 	  value_32_1 = value_64 & 0xFFFFFFFF;
-    data[j] = (float)fx2float(value_32_1, FX_IL);
+    value_32_1_f = (float)fx2float(value_32_1, FX_IL);
+    // value_32_1_f = (float)((*shift) * (float) value_32_1);
 
 	  value_32_2 = (value_64 >> 32) & 0xFFFFFFFF;
-    data[j+1] = (float)fx2float(value_32_2, FX_IL);
-#else
-  // convert input to fixed point
-  for (int j = 0; j < 2 * RADAR_N; j++) {
-    data[j] = (float)fx2float(fftHW_lo_mem[j], FX_IL);
-#endif
+    value_32_2_f = (float)fx2float(value_32_2, FX_IL);
+    // value_32_2_f = (float)((*shift) * (float) value_32_2);
 
-    SDEBUG(
-      if (j < 64) { 
-	    printf("FFT_OUT_DATA %u : %lx\n", j, data[j]);
-      }
-    );
+    temp = (pow(value_32_1_f,2) + pow(value_32_2_f,2))/100.0;
+    if (temp > max_psd) {
+      max_psd = temp;
+      max_index = j/2;
+    }
   }
 
   fft_cvtout_stop = get_counter();
   fft_cvtout_intvl += fft_cvtout_stop - fft_cvtout_start;
+
+  calc_stop = get_counter();
+  calc_intvl += calc_stop - calc_start;
+#else
+  // convert input to fixed point
+  for (int j = 0; j < 2 * RADAR_N; j++) {
+    data[j] = (float)fx2float(fftHW_lo_mem[j], FX_IL);
+    }
+
+  calc_stop = get_counter();
+  calc_intvl += calc_stop - calc_start;
+
+  cdfmcw_start = get_counter();
+
+  float max_psd = 0;
+  unsigned int max_index = 0;
+  unsigned int i;
+  float temp;
+
+  for (i=0; i < RADAR_N; i++) {
+    temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
+    if (temp > max_psd) {
+      max_psd = temp;
+      max_index = i;
+    }
+  }
+
+  cdfmcw_stop = get_counter();
+  cdfmcw_intvl += cdfmcw_stop - cdfmcw_start;
+#endif
 
 #else // if HW_FFT
 
@@ -347,8 +386,6 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_stop = get_counter();
   fft_intvl += fft_stop - fft_start;
 
-#endif // if HW_FFT
-
   calc_stop = get_counter();
   calc_intvl += calc_stop - calc_start;
 
@@ -367,11 +404,11 @@ float calculate_peak_dist_from_fmcw(float* data)
     }
   }
 
-
-  float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
-
   cdfmcw_stop = get_counter();
   cdfmcw_intvl += cdfmcw_stop - cdfmcw_start;
+#endif // if HW_FFT
+
+  float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
 
   if (max_psd > RADAR_psd_threshold) {
     return distance;

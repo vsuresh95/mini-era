@@ -215,18 +215,6 @@ int main(int argc, char *argv[])
     intvl_iter_rad += stop_iter_rad - start_iter_rad;
 
     distance_t rdict_dist = rdentry_p->distance;
-    float * ref_in = rdentry_p->return_data;
-    float radar_inputs[2*RADAR_N];
-
-    MIN_DEBUG(printf("\nCopying radar inputs...\n"));
-
-    for (int ii = 0; ii < 2*RADAR_N; ii++) {
-      radar_inputs[ii] = ref_in[ii];
-
-      #if 0
-       if (ii < 64) { printf("radar_inputs[%u] = %x %x %x\n", ii, radar_inputs[ii], ref_in[ii], rdentry_p->return_data[ii]); }
-      #endif
-    }
 
     /* The Viterbi decoding kernel performs Viterbi decoding on the next
      * OFDM symbol (message), and returns the extracted message.
@@ -246,7 +234,7 @@ int main(int argc, char *argv[])
     start_exec_rad = get_counter();
     //BM: added print
     MIN_DEBUG(printf("\nInvoking execute_rad_kernel...\n"));
-    distance = execute_rad_kernel(radar_inputs);
+    distance = execute_rad_kernel(rdentry_p->return_data);
     //BM: added print
     MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
     stop_exec_rad = get_counter();
