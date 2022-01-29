@@ -206,15 +206,6 @@ int main(int argc, char *argv[])
     
     MIN_DEBUG(printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed));
 
-    /* The computer vision kernel performs object recognition on the
-     * next image, and returns the corresponding label. 
-     * This process takes place locally (i.e. within this car).
-     */
-    start_iter_cv = get_counter();
-    label_t cv_tr_label = iterate_cv_kernel(vehicle_state);
-    stop_iter_cv = get_counter();
-    intvl_iter_cv += stop_iter_cv - start_iter_cv;
-
     /* The radar kernel performs distance estimation on the next radar
      * data, and returns the estimated distance to the object.
      */
@@ -251,17 +242,6 @@ int main(int argc, char *argv[])
 
     // Here we will simulate multiple cases, based on global vit_msgs_behavior
     int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
-    //BM: vit_msgs_per_step is not being passed from commandline
-    // switch(vit_msgs_per_step) {
-    //   case 1: num_vit_msgs = total_obj; break;
-    //   case 2: num_vit_msgs = total_obj + 1; break;
-    // }
-
-    // EXECUTE the kernels using the now known inputs 
-    start_exec_cv = get_counter();
-    label = execute_cv_kernel(cv_tr_label);
-    stop_exec_cv = get_counter();
-    intvl_exec_cv += stop_exec_cv - start_exec_cv;
 
     start_exec_rad = get_counter();
     //BM: added print
@@ -282,7 +262,6 @@ int main(int argc, char *argv[])
     intvl_exec_vit += stop_exec_vit - start_exec_vit;
 
     // POST-EXECUTE each kernels to gather stats, etc.
-    post_execute_cv_kernel(cv_tr_label, label);
     post_execute_rad_kernel(rdentry_p->set, rdentry_p->index_in_set, rdict_dist, distance);
     for (int mi = 0; mi < num_vit_msgs; mi++) {
       post_execute_vit_kernel(vdentry_p->msg_id, message);
@@ -306,7 +285,6 @@ int main(int argc, char *argv[])
   printf("\nRun completed %u time steps\n", time_step);
 
   /* All the traces have been fully consumed. Quitting... */
-  closeout_cv_kernel();
   closeout_rad_kernel();
   closeout_vit_kernel();
 
