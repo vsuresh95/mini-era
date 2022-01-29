@@ -194,7 +194,6 @@ float calculate_peak_dist_from_fmcw(float* data)
 #ifdef HW_FFT
  #ifndef HW_FFT_BITREV
   // preprocess with bitreverse (fast in software anyway)
-  //fft_bit_reverse(data, fftHW_len, fftHW_log_len);
   fft_bit_reverse(data, RADAR_N, RADAR_LOGN);
  #endif // HW_FFT
 
@@ -250,9 +249,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 #endif
 #else
   // convert input to fixed point
-  //for (int j = 0; j < 2 * fftHW_len; j++) {
   for (int j = 0; j < 2 * RADAR_N; j++) {
-    //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
     fftHW_li_mem[j] = float2fx(data[j], FX_IL);
 #endif
 
