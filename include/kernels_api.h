@@ -42,7 +42,7 @@ typedef struct {
   unsigned int return_id;      // An entry-defined return ID 
   unsigned int log_nsamples;
   float distance;
-  float return_data[2 * MAX_RADAR_N];
+  float* return_data;
 } radar_dict_entry_t;
 
 #include "utils.h"
@@ -51,7 +51,8 @@ typedef struct {
   unsigned int msg_id;
   ofdm_param   ofdm_p;
   frame_param  frame_p;
-  uint8_t      in_bits[MAX_ENCODED_BITS];
+  uint8_t*      in_bits;
+  // uint8_t      in_bits[MAX_ENCODED_BITS];
 } vit_dict_entry_t;
 
 #define VITERBI_MSG_LENGTHS     4

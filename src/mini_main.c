@@ -21,6 +21,12 @@
 
 #include "kernels_api.h"
 
+uint64_t start_init_rad;
+uint64_t stop_init_rad;
+uint64_t intvl_init_rad;
+uint64_t start_init_vit;
+uint64_t stop_init_vit;
+uint64_t intvl_init_vit;
 uint64_t start_prog;
 uint64_t stop_prog;
 uint64_t intvl_prog;
@@ -168,6 +174,8 @@ int main(int argc, char *argv[])
   time_step = 0;   
   SIM_DEBUG(printf("Doing initialization tasks...\n"));
 
+  start_init_rad = get_counter();
+
   // initialize radar kernel - set up buffer
   SIM_DEBUG(printf("Initializing the Radar kernel...\n"));
   if (!init_rad_kernel())
@@ -176,6 +184,11 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  stop_init_rad = get_counter();
+  intvl_init_rad = stop_init_rad - start_init_rad;
+
+  start_init_vit = get_counter();
+
   // initialize viterbi kernel - set up buffer
   SIM_DEBUG(printf("Initializing the Viterbi kernel...\n"));
   if (!init_vit_kernel())
@@ -183,6 +196,9 @@ int main(int argc, char *argv[])
     printf("Error: the Viterbi decoding kernel couldn't be initialized properly.\n");
     return 1;
   }
+
+  stop_init_vit = get_counter();
+  intvl_init_vit = stop_init_vit - start_init_vit;
 
   /* We assume the vehicle starts in the following state:
    *  - Lane: center
@@ -275,6 +291,9 @@ int main(int argc, char *argv[])
   /* All the traces have been fully consumed. Quitting... */
   closeout_rad_kernel();
   closeout_vit_kernel();
+
+  printf("  init_rad_kernel run time    %lu cycles\n", intvl_init_rad);
+  printf("  init_vit_kernel run time    %lu cycles\n", intvl_init_vit);
 
   printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad/ITERATIONS);
   printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit/ITERATIONS);
