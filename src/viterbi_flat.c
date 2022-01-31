@@ -985,12 +985,6 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   	init_vit_buffer_stop = get_counter();
   	init_vit_buffer_intvl += init_vit_buffer_stop - init_vit_buffer_start;
 	
-    // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
-    // Reset the output space (for cleaner testing results)
-    for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
-      outMemory[ti] = 0;
-    }
-
 #ifdef GENERATE_CHECK_VALUES
     DEBUG(printf("\nINPUTS-TO-DO-DECODING:\n"));
     for (int ti = 0; ti < (84 + MAX_ENCODED_BITS); ti ++) {
