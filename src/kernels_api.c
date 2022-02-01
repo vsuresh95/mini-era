@@ -203,7 +203,7 @@ status_t init_rad_kernel()
     
   //BM: Allocating memory space for the radar return dict
   // the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
-  the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets* sizeof(radar_dict_entry_t*));
+  the_radar_return_dict = (radar_dict_entry_t**) aligned_malloc(num_radar_samples_sets * (sizeof(radar_dict_entry_t) + 2*MAX_RADAR_N*sizeof(float)));
   if (the_radar_return_dict == NULL) {
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
     return error;
@@ -212,7 +212,7 @@ status_t init_rad_kernel()
   SIM_DEBUG(printf("the_radar_return_dict = %p, sizeof(radar_dict_entry_t) = %d\n", the_radar_return_dict, sizeof(radar_dict_entry_t)));
    
   for (int si = 0; si < num_radar_samples_sets; si++) {
-    the_radar_return_dict[si] = (radar_dict_entry_t*)aligned_malloc(radar_dict_items_per_set* sizeof(radar_dict_entry_t));
+    the_radar_return_dict[si] = (radar_dict_entry_t*) aligned_malloc(radar_dict_items_per_set * (sizeof(radar_dict_entry_t)+ 2 * MAX_RADAR_N * sizeof(float)));
     if (the_radar_return_dict[si] == NULL) {
       printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
       return error;
@@ -255,11 +255,10 @@ status_t init_rad_kernel()
       the_radar_return_dict[si][di].log_nsamples = entry_log_nsamples;
       the_radar_return_dict[si][di].distance =  entry_dist;
 
-      for (int i = 0; i < 2*(1<<entry_log_nsamples); i++) {
-	      the_radar_return_dict[si][di].return_data[i] = norm_radar_01k[di][i];
-	      tot_dict_values++;
-	      entry_dict_values++;
-      }
+	    the_radar_return_dict[si][di].return_data = &(norm_radar_01k[di][0]);
+
+	    tot_dict_values += 2*(1<<entry_log_nsamples);
+	    entry_dict_values += 2*(1<<entry_log_nsamples);
 
       SIM_DEBUG(printf("    Read in dict set %u entry %u with %u total values\n", si, di, entry_dict_values));
     } // for (int di across radar dictionary entries per set
@@ -271,21 +270,23 @@ status_t init_rad_kernel()
   SIM_DEBUG(printf("  Read %u sets with %u entries totalling %u values across them all\n", num_radar_samples_sets, radar_dict_items_per_set, tot_dict_values));
 
   // Initialize hist_pct_errs values
-  for (int si = 0; si < num_radar_samples_sets; si++) {
-    for (int di = 0; di < radar_dict_items_per_set; di++) {
-      hist_distances[si][di] = 0;
-      for (int i = 0; i < 5; i++) {
-	      hist_pct_errs[si][di][i] = 0;
+  // Clear the inputs (injected) histogram
+  MIN_DEBUG(
+    for (int si = 0; si < num_radar_samples_sets; si++) {
+      for (int di = 0; di < radar_dict_items_per_set; di++) {
+        hist_distances[si][di] = 0;
+        for (int i = 0; i < 5; i++) {
+	       hist_pct_errs[si][di][i] = 0;
+        }
       }
     }
-  }
 
-  //Clear the inputs (injected) histogram
-  for (int i = 0; i < MAX_RDICT_SAMPLE_SETS; i++) {
-    for (int j = 0; j < MAX_RDICT_ENTRIES; j++) {
-      radar_inputs_histogram[i][j] = 0;
+    for (int i = 0; i < MAX_RDICT_SAMPLE_SETS; i++) {
+      for (int j = 0; j < MAX_RDICT_ENTRIES; j++) {
+        radar_inputs_histogram[i][j] = 0;
+      }
     }
-  }
+  );
 
  #ifdef HW_FFT
   init_fft_parameters();
@@ -386,7 +387,7 @@ status_t init_vit_kernel()
   SIM_DEBUG(printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items));
 
   //BM
-  the_viterbi_trace_dict = (vit_dict_entry_t*)aligned_malloc(num_viterbi_dictionary_items*sizeof(vit_dict_entry_t));
+  the_viterbi_trace_dict = (vit_dict_entry_t*) aligned_malloc(num_viterbi_dictionary_items * (sizeof(vit_dict_entry_t) + MAX_ENCODED_BITS*sizeof(uint8_t)));
   if (the_viterbi_trace_dict == NULL) 
   {
     printf("ERROR : Cannot allocate Viterbi Trace Dictionary memory space\n");
@@ -436,27 +437,22 @@ status_t init_vit_kernel()
     the_viterbi_trace_dict[i].frame_p.n_encoded_bits = in_encoded_bits;
     the_viterbi_trace_dict[i].frame_p.n_data_bits    = in_data_bits;
 
-    int num_in_bits = in_encoded_bits + 10; // strlen(str3)+10; //additional 10 values
-    DEBUG(printf("  Reading %u in_bits\n", num_in_bits));
-    for (int ci = 0; ci < num_in_bits; ci++) { 
-      #ifdef SUPER_VERBOSE
-      printf("%u ", c);
-      #endif
-      the_viterbi_trace_dict[i].in_bits[ci] = (uint8_t)in_bits[i][ci];
-    }
-    DEBUG(printf("\n"));
+    the_viterbi_trace_dict[i].in_bits = &(in_bits[i][0]);
   }
 
   //Clear the messages (injected) histogram
-  for (int i = 0; i < VITERBI_MSG_LENGTHS; i++) {
-    for (int j = 0; j < NUM_MESSAGES; j++) {
-      viterbi_messages_histogram[i][j] = 0;
+  MIN_DEBUG(
+    for (int i = 0; i < VITERBI_MSG_LENGTHS; i++) {
+      for (int j = 0; j < NUM_MESSAGES; j++) {
+        viterbi_messages_histogram[i][j] = 0;
+      }
     }
-  }
+  
 
-  for (int i = 0; i < NUM_LANES * MAX_OBJ_IN_LANE; i++) {
-    hist_total_objs[i] = 0;
-  }
+    for (int i = 0; i < NUM_LANES * MAX_OBJ_IN_LANE; i++) {
+      hist_total_objs[i] = 0;
+    }
+  );
 
 #ifdef HW_VIT
   init_vit_parameters();

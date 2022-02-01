@@ -32,6 +32,7 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 	uint8_t out[output_length];
 	int state = 0; //start
 	int verbose = ((ref != NULL) && (msg != NULL));
+
 	// find the initial state of LFSR (linear feedback shift register: 7 bits) from first 7 input bits
 	for(int i = 0; i < 7; i++)
 	{
@@ -40,17 +41,92 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 			state |= 1 << (6 - i);
 		}
 	}
-	//init o/p array to zeros
-	for (int i=0; i<output_length; i++ )
-	{
-		out[i] = 0;
-	}
+
+	out[29] = 0;
 
 	out[0] = state; //initial value
 	int feedback;
 	int bit;
 	int index = 0;
 	int mod = 0;
+
+#ifdef DOUBLE_WORD
+	uint8_t value_8[8];
+	int64_t value_64;
+
+	{
+		feedback = ((!!(state & 64))) ^ (!!(state & 8));
+		bit = feedback ^ (*(in+7) & 0x1);
+		index = 7/8;
+		mod =  7%8;
+		int comp1, comp2, val;
+		comp1 = (bit << mod);
+		val = out[index];
+		comp2 = val | comp1;
+		out[index] =  comp2;
+		state = ((state << 1) & 0x7e) | feedback;
+	}
+
+	for(int i = 8; i < (psdusize*8)+16; i+=8)
+	{
+#if (VIT_SPANDEX_MODE == 2)
+		void* dst = (void*)((uint64_t) in+i);
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x2002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#elif (VIT_SPANDEX_MODE > 2)
+		void* dst = (void*)((uint64_t) in+i);
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x4002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#else
+		void* dst = (void*)((uint64_t) in+i);
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x0002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#endif
+		value_8[0] = (value_64 >> 0) & 0xFF;
+		value_8[1] = (value_64 >> 8) & 0xFF;
+		value_8[2] = (value_64 >> 16) & 0xFF;
+		value_8[3] = (value_64 >> 24) & 0xFF;
+		value_8[4] = (value_64 >> 32) & 0xFF;
+		value_8[5] = (value_64 >> 40) & 0xFF;
+		value_8[6] = (value_64 >> 48) & 0xFF;
+		value_8[7] = (value_64 >> 56) & 0xFF;
+
+		for (int j = 0; j < 8; j++)
+		{
+			feedback = ((!!(state & 64))) ^ (!!(state & 8));
+			bit = feedback ^ (value_8[j] & 0x1);
+			index = i/8;
+			mod = j;
+			int comp1, comp2, val;
+			comp1 = (bit << mod);
+			val = out[index];
+			comp2 = val | comp1;
+			out[index] =  comp2;
+			state = ((state << 1) & 0x7e) | feedback;
+		}
+	}
+#else
 	for(int i = 7; i < (psdusize*8)+16; i++) // 2 bytes more than psdu_size -> convert to bits
 	{
 		feedback = ((!!(state & 64))) ^ (!!(state & 8));
@@ -65,12 +141,9 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 		//comp3 = out[index];
 		state = ((state << 1) & 0x7e) | feedback;
 	}
+#endif
 
-	for (int i = 0; i< msg_length; i++)
-	  {
-	    out_msg[i] = out[i+26];
-	  }
-	out_msg[msg_length] = '\0';
+	out_msg[3] = out[29];
 
 	if (verbose) {
 	  DEBUG(printf("\n"));

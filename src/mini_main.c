@@ -21,6 +21,12 @@
 
 #include "kernels_api.h"
 
+uint64_t start_init_rad;
+uint64_t stop_init_rad;
+uint64_t intvl_init_rad;
+uint64_t start_init_vit;
+uint64_t stop_init_vit;
+uint64_t intvl_init_vit;
 uint64_t start_prog;
 uint64_t stop_prog;
 uint64_t intvl_prog;
@@ -168,6 +174,8 @@ int main(int argc, char *argv[])
   time_step = 0;   
   SIM_DEBUG(printf("Doing initialization tasks...\n"));
 
+  start_init_rad = get_counter();
+
   // initialize radar kernel - set up buffer
   SIM_DEBUG(printf("Initializing the Radar kernel...\n"));
   if (!init_rad_kernel())
@@ -176,6 +184,11 @@ int main(int argc, char *argv[])
     return 1;
   }
 
+  stop_init_rad = get_counter();
+  intvl_init_rad = stop_init_rad - start_init_rad;
+
+  start_init_vit = get_counter();
+
   // initialize viterbi kernel - set up buffer
   SIM_DEBUG(printf("Initializing the Viterbi kernel...\n"));
   if (!init_vit_kernel())
@@ -183,6 +196,9 @@ int main(int argc, char *argv[])
     printf("Error: the Viterbi decoding kernel couldn't be initialized properly.\n");
     return 1;
   }
+
+  stop_init_vit = get_counter();
+  intvl_init_vit = stop_init_vit - start_init_vit;
 
   /* We assume the vehicle starts in the following state:
    *  - Lane: center
@@ -206,15 +222,6 @@ int main(int argc, char *argv[])
     
     MIN_DEBUG(printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed));
 
-    /* The computer vision kernel performs object recognition on the
-     * next image, and returns the corresponding label. 
-     * This process takes place locally (i.e. within this car).
-     */
-    start_iter_cv = get_counter();
-    label_t cv_tr_label = iterate_cv_kernel(vehicle_state);
-    stop_iter_cv = get_counter();
-    intvl_iter_cv += stop_iter_cv - start_iter_cv;
-
     /* The radar kernel performs distance estimation on the next radar
      * data, and returns the estimated distance to the object.
      */
@@ -224,18 +231,6 @@ int main(int argc, char *argv[])
     intvl_iter_rad += stop_iter_rad - start_iter_rad;
 
     distance_t rdict_dist = rdentry_p->distance;
-    float * ref_in = rdentry_p->return_data;
-    float radar_inputs[2*RADAR_N];
-
-    MIN_DEBUG(printf("\nCopying radar inputs...\n"));
-
-    for (int ii = 0; ii < 2*RADAR_N; ii++) {
-      radar_inputs[ii] = ref_in[ii];
-
-      #if 0
-       if (ii < 64) { printf("radar_inputs[%u] = %x %x %x\n", ii, radar_inputs[ii], ref_in[ii], rdentry_p->return_data[ii]); }
-      #endif
-    }
 
     /* The Viterbi decoding kernel performs Viterbi decoding on the next
      * OFDM symbol (message), and returns the extracted message.
@@ -251,22 +246,11 @@ int main(int argc, char *argv[])
 
     // Here we will simulate multiple cases, based on global vit_msgs_behavior
     int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
-    //BM: vit_msgs_per_step is not being passed from commandline
-    // switch(vit_msgs_per_step) {
-    //   case 1: num_vit_msgs = total_obj; break;
-    //   case 2: num_vit_msgs = total_obj + 1; break;
-    // }
-
-    // EXECUTE the kernels using the now known inputs 
-    start_exec_cv = get_counter();
-    label = execute_cv_kernel(cv_tr_label);
-    stop_exec_cv = get_counter();
-    intvl_exec_cv += stop_exec_cv - start_exec_cv;
 
     start_exec_rad = get_counter();
     //BM: added print
     MIN_DEBUG(printf("\nInvoking execute_rad_kernel...\n"));
-    distance = execute_rad_kernel(radar_inputs);
+    distance = execute_rad_kernel(rdentry_p->return_data);
     //BM: added print
     MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
     stop_exec_rad = get_counter();
@@ -282,7 +266,6 @@ int main(int argc, char *argv[])
     intvl_exec_vit += stop_exec_vit - start_exec_vit;
 
     // POST-EXECUTE each kernels to gather stats, etc.
-    post_execute_cv_kernel(cv_tr_label, label);
     post_execute_rad_kernel(rdentry_p->set, rdentry_p->index_in_set, rdict_dist, distance);
     for (int mi = 0; mi < num_vit_msgs; mi++) {
       post_execute_vit_kernel(vdentry_p->msg_id, message);
@@ -306,9 +289,11 @@ int main(int argc, char *argv[])
   printf("\nRun completed %u time steps\n", time_step);
 
   /* All the traces have been fully consumed. Quitting... */
-  closeout_cv_kernel();
   closeout_rad_kernel();
   closeout_vit_kernel();
+
+  printf("  init_rad_kernel run time    %lu cycles\n", intvl_init_rad);
+  printf("  init_vit_kernel run time    %lu cycles\n", intvl_init_vit);
 
   printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad/ITERATIONS);
   printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit/ITERATIONS);
