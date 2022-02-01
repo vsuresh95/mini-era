@@ -230,7 +230,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
-			".word 0x2262B82B"
+			".word 0x2462B82B"
 			: 
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"

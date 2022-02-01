@@ -140,6 +140,7 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	spandex_config.w_en = 1;
 	spandex_config.w_op = 1;
 	spandex_config.w_type = 1;
+	spandex_config.w_cid = 1;
 #endif
 	iowrite32(vit_dev, SPANDEX_REG, spandex_config.spandex_reg);
 #endif
@@ -773,7 +774,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
-			".word 0x2462B82B"
+			".word 0x2662B82B"
 			: 
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
@@ -838,7 +839,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
-			".word 0x2462B82B"
+			".word 0x2662B82B"
 			: 
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
@@ -907,7 +908,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			asm volatile (
 				"mv t0, %0;"
 				"mv t1, %1;"
-				".word 0x2462B82B"
+				".word 0x2662B82B"
 				: 
 				: "r" (dst), "r" (value_64)
 				: "t0", "t1", "memory"
@@ -954,7 +955,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 			asm volatile (
 				"mv t0, %0;"
 				"mv t1, %1;"
-				".word 0x2462B82B"
+				".word 0x2662B82B"
 				: 
 				: "r" (dst), "r" (value_64)
 				: "t0", "t1", "memory"
