@@ -101,14 +101,28 @@ struct esp_device *espdevs;
 struct esp_device *fft_dev, *vit_dev;
 int ndev;
 
+int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
+
+volatile uint64_t checkpoint;
+
+message_t message;
+vehicle_state_t vehicle_state;
+
 int main(int argc, char *argv[])
 {
-  vehicle_state_t vehicle_state;
   label_t label;
   distance_t distance;
-  message_t message;
+
+  radar_dict_entry_t* rdentry_p;
+  distance_t rdict_dist;
+  vit_dict_entry_t* vdentry_p;
 
   int opt;
+
+  uint64_t old_val;
+
+ 	// read hart ID
+ 	uint64_t hartid = read_hartid();
 
   intvl_prog = 0;
   intvl_iter_rad = 0;
@@ -148,57 +162,109 @@ int main(int argc, char *argv[])
   //BM: Commenting
   //printf("Using viterbi messages per step behavior %u = %s\n", vit_msgs_per_step, vit_msgs_per_step_str[vit_msgs_per_step]);
 
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 1) {
+    old_val = amo_swap(&checkpoint, 0xcafebeed);
+    while(checkpoint != 1);
+    amo_add (&checkpoint, 1);
+  } else {
+    while(checkpoint != 0xcafebeed);
+    old_val = amo_swap(&checkpoint, 1);
+  }
+  while(checkpoint != 2);
+  #endif
+
 #ifdef HW_FFT
   // find the FFT device
-	ndev = probe(&espdevs, VENDOR_SLD, SLD_FFT, FFT_DEV_NAME);
-	if (ndev == 0) {
-		printf("fft not found\n");
-		return 0;
-	}
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 0)
+  #endif
+  {
+	  ndev = probe(&espdevs, VENDOR_SLD, SLD_FFT, FFT_DEV_NAME);
+	  if (ndev == 0) {
+	  	printf("fft not found\n");
+	  	return 0;
+	  }
 
-	fft_dev = &espdevs[0];
+	  fft_dev = &espdevs[0];
+  }
 #endif // if HW_FFT
+
+  #ifdef TWO_CORE_SCHED
+  amo_add (&checkpoint, 1);
+  while(checkpoint != 4);
+  #endif
 
 #ifdef HW_VIT
   // find the Viterbi device
-	ndev = probe(&espdevs, VENDOR_SLD, SLD_VITDODEC, VIT_DEV_NAME);
-	if (ndev == 0) {
-		printf("vitdodec not found\n");
-		return 0;
-	}
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 1)
+  #endif
+  {
+	  ndev = probe(&espdevs, VENDOR_SLD, SLD_VITDODEC, VIT_DEV_NAME);
+	  if (ndev == 0) {
+	  	printf("vitdodec not found\n");
+	  	return 0;
+	  }
 
-	vit_dev = &espdevs[0];
+	  vit_dev = &espdevs[0];
+  }
 #endif // if HW_VIT
+
+  #ifdef TWO_CORE_SCHED
+  amo_add (&checkpoint, 1);
+  while(checkpoint != 6);
+  #endif
 
   //BM: Runs sometimes do not reset timesteps unless in main()
   time_step = 0;   
   SIM_DEBUG(printf("Doing initialization tasks...\n"));
 
-  start_init_rad = get_counter();
-
   // initialize radar kernel - set up buffer
   SIM_DEBUG(printf("Initializing the Radar kernel...\n"));
-  if (!init_rad_kernel())
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 0)
+  #endif
   {
-    printf("Error: the radar kernel couldn't be initialized properly.\n");
-    return 1;
+    start_init_rad = get_counter();
+
+    if (!init_rad_kernel())
+    {
+      printf("Error: the radar kernel couldn't be initialized properly.\n");
+      return 1;
+    }
+
+    stop_init_rad = get_counter();
+    intvl_init_rad = stop_init_rad - start_init_rad;
   }
 
-  stop_init_rad = get_counter();
-  intvl_init_rad = stop_init_rad - start_init_rad;
-
-  start_init_vit = get_counter();
+  #ifdef TWO_CORE_SCHED
+  amo_add (&checkpoint, 1);
+  while(checkpoint != 8);
+  #endif
 
   // initialize viterbi kernel - set up buffer
   SIM_DEBUG(printf("Initializing the Viterbi kernel...\n"));
-  if (!init_vit_kernel())
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 1)
+  #endif
   {
-    printf("Error: the Viterbi decoding kernel couldn't be initialized properly.\n");
-    return 1;
+    start_init_vit = get_counter();
+
+    if (!init_vit_kernel())
+    {
+      printf("Error: the Viterbi decoding kernel couldn't be initialized properly.\n");
+      return 1;
+    }
+
+    stop_init_vit = get_counter();
+    intvl_init_vit = stop_init_vit - start_init_vit;
   }
 
-  stop_init_vit = get_counter();
-  intvl_init_vit = stop_init_vit - start_init_vit;
+  #ifdef TWO_CORE_SCHED
+  amo_add (&checkpoint, 1);
+  while(checkpoint != 10);
+  #endif
 
   /* We assume the vehicle starts in the following state:
    *  - Lane: center
@@ -210,27 +276,51 @@ int main(int argc, char *argv[])
   SIM_DEBUG(printf("Vehicle starts with the following state: active: %u lane %u speed %d\n", vehicle_state.active, vehicle_state.lane, (int) vehicle_state.speed));
 
   printf("Starting the main loop...\n");
-  start_prog = get_counter();
+
+  #ifdef TWO_CORE_SCHED
+  amo_add (&checkpoint, 1);
+  while(checkpoint != 12);
+  #endif
+
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 0)
+  #endif
+  {
+    start_prog = get_counter();
+  }
  
   // hardcoded for 100 trace samples
   for (int i = 0; i < ITERATIONS; i++)
   {
-    if (!read_next_trace_record(vehicle_state))
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 0)
+    #endif
     {
-      break;
+      if (!read_next_trace_record(vehicle_state))
+      {
+        break;
+      }
     }
+
+    amo_add (&checkpoint, 1);
+    while(checkpoint != (14+4*i));
     
     MIN_DEBUG(printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed));
 
     /* The radar kernel performs distance estimation on the next radar
      * data, and returns the estimated distance to the object.
      */
-    start_iter_rad = get_counter();
-    radar_dict_entry_t* rdentry_p = iterate_rad_kernel(vehicle_state);
-    stop_iter_rad = get_counter();
-    intvl_iter_rad += stop_iter_rad - start_iter_rad;
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 0)
+    #endif
+    {
+      start_iter_rad = get_counter();
+      rdentry_p = iterate_rad_kernel(vehicle_state);
+      stop_iter_rad = get_counter();
+      intvl_iter_rad += stop_iter_rad - start_iter_rad;
 
-    distance_t rdict_dist = rdentry_p->distance;
+      rdict_dist = rdentry_p->distance;
+    }
 
     /* The Viterbi decoding kernel performs Viterbi decoding on the next
      * OFDM symbol (message), and returns the extracted message.
@@ -239,89 +329,127 @@ int main(int argc, char *argv[])
      * road construction warnings). For simplicity, we define a fix set
      * of message classes (e.g. car on the right, car on the left, etc.)
      */
-    start_iter_vit = get_counter();
-    vit_dict_entry_t* vdentry_p = iterate_vit_kernel(vehicle_state);
-    stop_iter_vit = get_counter();
-    intvl_iter_vit += stop_iter_vit - start_iter_vit;
-
-    // Here we will simulate multiple cases, based on global vit_msgs_behavior
-    int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
-
-    start_exec_rad = get_counter();
-    //BM: added print
-    MIN_DEBUG(printf("\nInvoking execute_rad_kernel...\n"));
-    distance = execute_rad_kernel(rdentry_p->return_data);
-    //BM: added print
-    MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
-    stop_exec_rad = get_counter();
-    intvl_exec_rad += stop_exec_rad - start_exec_rad;
-
-    start_exec_vit = get_counter();
-    //BM: added print
-    MIN_DEBUG(printf("\nInvoking execute_vit_kernel...\n"));
-    message = execute_vit_kernel(vdentry_p, num_vit_msgs);
-    //BM: added print
-    MIN_DEBUG(printf("\nBack from execute_vit_kernel... message = %d\n", message));
-    stop_exec_vit = get_counter();
-    intvl_exec_vit += stop_exec_vit - start_exec_vit;
-
-    // POST-EXECUTE each kernels to gather stats, etc.
-    post_execute_rad_kernel(rdentry_p->set, rdentry_p->index_in_set, rdict_dist, distance);
-    for (int mi = 0; mi < num_vit_msgs; mi++) {
-      post_execute_vit_kernel(vdentry_p->msg_id, message);
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 1)
+    #endif
+    {
+      start_iter_vit = get_counter();
+      vdentry_p = iterate_vit_kernel(vehicle_state);
+      stop_iter_vit = get_counter();
+      intvl_iter_vit += stop_iter_vit - start_iter_vit;
     }
 
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 0)
+    #endif
+    {
+      start_exec_rad = get_counter();
+      //BM: added print
+      MIN_DEBUG(printf("\nInvoking execute_rad_kernel...\n"));
+      distance = execute_rad_kernel(rdentry_p->return_data);
+      //BM: added print
+      MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
+      stop_exec_rad = get_counter();
+      intvl_exec_rad += stop_exec_rad - start_exec_rad;
+    }
+
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 1)
+    #endif
+    {
+      start_exec_vit = get_counter();
+      //BM: added print
+      MIN_DEBUG(printf("\nInvoking execute_vit_kernel...\n"));
+      message = execute_vit_kernel(vdentry_p, num_vit_msgs);
+      //BM: added print
+      MIN_DEBUG(printf("\nBack from execute_vit_kernel... message = %d\n", message));
+      stop_exec_vit = get_counter();
+      intvl_exec_vit += stop_exec_vit - start_exec_vit;
+    }
+
+    // POST-EXECUTE each kernels to gather stats, etc.
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 0)
+    #endif
+    {
+      post_execute_rad_kernel(rdentry_p->set, rdentry_p->index_in_set, rdict_dist, distance);
+    }
+
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 1)
+    #endif
+    {
+      for (int mi = 0; mi < num_vit_msgs; mi++) {
+        post_execute_vit_kernel(vdentry_p->msg_id, message);
+      }
+    }
+
+    amo_add (&checkpoint, 1);
+    while(checkpoint != (16+4*i));
+    
     /* The plan_and_control() function makes planning and control decisions
      * based on the currently perceived information. It returns the new
      * vehicle state.
      */
-    MIN_DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance));
-    vehicle_state = plan_and_control(label, distance, message, vehicle_state);
-    MIN_DEBUG(printf("New vehicle state: lane %u speed %d\n\n", vehicle_state.lane, (int) vehicle_state.speed));
+    #ifdef TWO_CORE_SCHED
+    if (hartid == 0)
+    #endif
+    {
+      MIN_DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance));
+      vehicle_state = plan_and_control(label, distance, message, vehicle_state);
+      MIN_DEBUG(printf("New vehicle state: lane %u speed %d\n\n", vehicle_state.lane, (int) vehicle_state.speed));
 
-    time_step++;
+      time_step++;
+    }
   }
 
-  stop_prog = get_counter();
-  intvl_prog += stop_prog - start_prog;
+  #ifdef TWO_CORE_SCHED
+  if (hartid == 0)
+  #endif
+  {
+    stop_prog = get_counter();
+    intvl_prog = stop_prog - start_prog;
 
-  /* All the trace/simulation-time has been completed -- Quitting... */
-  printf("\nRun completed %u time steps\n", time_step);
+    /* All the trace/simulation-time has been completed -- Quitting... */
+    printf("\nRun completed %u time steps\n", time_step);
 
-  /* All the traces have been fully consumed. Quitting... */
-  closeout_rad_kernel();
-  closeout_vit_kernel();
+    /* All the traces have been fully consumed. Quitting... */
+    closeout_rad_kernel();
+    closeout_vit_kernel();
 
-  printf("  init_rad_kernel run time    %lu cycles\n", intvl_init_rad);
-  printf("  init_vit_kernel run time    %lu cycles\n", intvl_init_vit);
+    printf("  init_rad_kernel run time    %lu cycles\n", intvl_init_rad);
+    printf("  init_vit_kernel run time    %lu cycles\n", intvl_init_vit);
 
-  printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad/ITERATIONS);
-  printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit/ITERATIONS);
+    printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad/ITERATIONS);
+    printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit/ITERATIONS);
 
-  // These are timings taken from called routines...
-  printf("\n");
-  printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad/ITERATIONS);
-  printf("  fft-total   run time    %lu cycles\n", calc_intvl/ITERATIONS);
- #ifdef HW_FFT
-  printf("  bitrev      run time    %lu cycles\n", fft_br_intvl/ITERATIONS);
- #else 
-  printf("  bit-reverse run time    %lu cycles\n", bitrev_intvl/ITERATIONS);
- #endif
-  printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_intvl/ITERATIONS);
-  printf("  fft-comp    run time    %lu cycles\n", fft_intvl/ITERATIONS);
-  printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_intvl/ITERATIONS);
-  printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl/ITERATIONS);
+    // These are timings taken from called routines...
+    printf("\n");
+    printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad/ITERATIONS);
+    printf("  fft-total   run time    %lu cycles\n", calc_intvl/ITERATIONS);
+#ifdef HW_FFT
+    printf("  bitrev      run time    %lu cycles\n", fft_br_intvl/ITERATIONS);
+#else 
+    printf("  bit-reverse run time    %lu cycles\n", bitrev_intvl/ITERATIONS);
+#endif
+    printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_intvl/ITERATIONS);
+    printf("  fft-comp    run time    %lu cycles\n", fft_intvl/ITERATIONS);
+    printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_intvl/ITERATIONS);
+    printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl/ITERATIONS);
 
-  printf("\n");
-  printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit/ITERATIONS);
-  printf("  init_vit_buffer run time    %lu cycles\n", init_vit_buffer_intvl/ITERATIONS);
-  printf("  depuncture  run time    %lu cycles\n", depunc_intvl/ITERATIONS);
-  printf("  do-decoding run time    %lu cycles\n", dodec_intvl/ITERATIONS);
-  printf("  copy_vit_buffer run time    %lu cycles\n", copy_vit_buffer_intvl/ITERATIONS);
-  printf("  descram run time    %lu cycles\n", descram_intvl/ITERATIONS);
+    printf("\n");
+    printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit/ITERATIONS);
+    printf("  init_vit_buffer run time    %lu cycles\n", init_vit_buffer_intvl/ITERATIONS);
+    printf("  depuncture  run time    %lu cycles\n", depunc_intvl/ITERATIONS);
+    printf("  do-decoding run time    %lu cycles\n", dodec_intvl/ITERATIONS);
+    printf("  copy_vit_buffer run time    %lu cycles\n", copy_vit_buffer_intvl/ITERATIONS);
+    printf("  descram run time    %lu cycles\n", descram_intvl/ITERATIONS);
 
-  printf("\nProgram total execution time     %lu cycles\n", intvl_prog/ITERATIONS);
+    printf("\nProgram total execution time     %lu cycles\n", intvl_prog/ITERATIONS);
 
-  printf("\nDone.\n");
-  return 0;
+    printf("\nDone.\n");
+    return 0;
+  } else {
+    while(1);
+  }
 }
