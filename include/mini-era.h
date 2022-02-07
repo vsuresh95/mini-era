@@ -45,6 +45,18 @@ struct vitdodec_access {
 #define SLD_VITDODEC 0x030
 #define VIT_DEV_NAME "sld,vitdodec_stratus"
 
+#define SLD_SENSOR_DMA 0x050
+#define SENSE_DEV_NAME "sld,sensor_dma_stratus"
+
+#define SENSOR_DMA_RD_SP_OFFSET_REG 0x58
+#define SENSOR_DMA_RD_WR_ENABLE_REG 0x54
+#define SENSOR_DMA_WR_SIZE_REG 0x50
+#define SENSOR_DMA_WR_SP_OFFSET_REG 0x4c
+#define SENSOR_DMA_RD_SIZE_REG 0x48
+#define SENSOR_DMA_DST_OFFSET_REG 0x44
+#define SENSOR_DMA_SRC_OFFSET_REG 0x40
+#define ENC_BYTES 17408
+
 typedef int8_t vitHW_token_t;
 
 

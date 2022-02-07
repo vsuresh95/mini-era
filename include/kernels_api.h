@@ -188,4 +188,7 @@ void closeout_cv_kernel(void);
 void closeout_rad_kernel(void);
 void closeout_vit_kernel(void);
 
+extern struct esp_device *fft_sense_dev;
+extern struct esp_device *vit_sense_dev;
+
 #endif

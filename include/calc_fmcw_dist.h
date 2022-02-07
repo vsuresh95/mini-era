@@ -18,6 +18,9 @@ extern struct esp_device *espdevs;
 extern struct esp_device *fft_dev;
 extern int ndev;
 
+extern int64_t *input_rad_mem;
+extern int64_t *input_vit_mem;
+
 /* Some function declarations */
 extern void  init_calculate_peak_dist();
 extern float calculate_peak_dist_from_fmcw(float* data);
