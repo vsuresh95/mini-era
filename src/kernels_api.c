@@ -187,6 +187,12 @@ static void init_fft_parameters()
 unsigned **ptable_fft;
 unsigned **ptable_vit;
 
+unsigned **ptable_sense_fft;
+unsigned **ptable_sense_vit;
+
+int64_t *input_rad_mem;
+int64_t *input_vit_mem;
+
 extern void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg);
 
 status_t init_rad_kernel()
@@ -290,24 +296,6 @@ status_t init_rad_kernel()
 
  #ifdef HW_FFT
   init_fft_parameters();
-  // #if (USE_FFT_ACCEL_TYPE == 1)
-  //  snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
-  // #elif (USE_FFT_ACCEL_TYPE == 2)
-  //  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
-  // #endif
-  //  printf("Open device %s\n", FFT_DEVNAME);
-  // #if (USE_FFT_FX == 64)
-  //  printf(" typedef unsigned long long token_t\n");
-  //  printf(" typedef double native_t\n");
-  //  printf(" #define fx2float fixed64_to_double\n");
-  //  printf(" #define float2fx double_to_fixed64\n");
-  // #elif (USE_FFT_FX == 32)
-  //  printf(" typedef int token_t\n");
-  //  printf(" typedef float native_t\n");
-  //  printf(" #define fx2float fixed32_to_float\n");
-  //  printf(" #define float2fx float_to_fixed32\n");
-  // #endif /* FFT_FX_WIDTH */
-  // printf(" #define FX_IL %u\n", FX_IL);
 
   SIM_DEBUG(printf("Allocate hardware buffer of size %d\n", fftHW_size));
   fftHW_lmem = (fftHW_token_t*)aligned_malloc(fftHW_size);
@@ -332,6 +320,63 @@ status_t init_rad_kernel()
 	iowrite32(fft_dev, PT_ADDRESS_REG, (unsigned long) ptable_fft);
 	iowrite32(fft_dev, PT_NCHUNK_REG, NCHUNK(fftHW_size));
 	iowrite32(fft_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+  size_t sample_set_size = 2 * MAX_RADAR_N * sizeof(float);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // copy radar data to FFT sensor scratchpad
+  for (int i = 0; i < radar_dict_items_per_set; i++)
+  {
+    input_rad_mem = (int64_t*) &(the_radar_return_dict[0][i].return_data[0]);
+    // printf("  memory = %p\n", input_rad_mem);
+
+    // Allocate and populate page table
+    ptable_sense_fft = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
+    
+		for (int j = 0; j < NCHUNK(sample_set_size); j++)
+      ptable_sense_fft[j] = (unsigned *) &input_rad_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
+
+    // printf("  ptable = %p\n", ptable_sense_fft);
+    // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
+
+    asm volatile ("fence w, w");
+
+    // Pass common configuration parameters 
+    iowrite32(fft_sense_dev, SELECT_REG, ioread32(fft_sense_dev, DEVID_REG));
+    iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+
+    iowrite32(fft_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_fft);
+    iowrite32(fft_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
+    iowrite32(fft_sense_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+    // Use the following if input and output data are not allocated at the default offsets
+    iowrite32(fft_sense_dev, SRC_OFFSET_REG, 0);
+    iowrite32(fft_sense_dev, DST_OFFSET_REG, 0);
+
+    // Pass accelerator-specific configuration parameters
+    /* <<--regs-config-->> */
+    iowrite32(fft_sense_dev, SENSOR_DMA_RD_SP_OFFSET_REG, sample_words*i);
+    iowrite32(fft_sense_dev, SENSOR_DMA_RD_WR_ENABLE_REG, 0);
+    iowrite32(fft_sense_dev, SENSOR_DMA_RD_SIZE_REG, sample_words);
+    iowrite32(fft_sense_dev, SENSOR_DMA_SRC_OFFSET_REG, 0);
+
+    // Start a_ccelerators
+    // printf("  Start...\n");
+    iowrite32(fft_sense_dev, CMD_REG, CMD_MASK_START);
+
+    // Wait for completion
+    unsigned done = 0;
+    while (!done) {
+      done = ioread32(fft_sense_dev, STATUS_REG);
+      done &= STATUS_MASK_DONE;
+    }
+    iowrite32(fft_sense_dev, CMD_REG, 0x0);
+    // printf("  Done...\n");
+  }
+
+  // address to be used for all FFT input data streaming in from the sensor
+  input_rad_mem = aligned_malloc(sample_set_size);
+  printf("  input_rad_mem = %p\n", input_rad_mem);
 #endif // if HW_FFT
 
   fftHW_desc.run = true;
@@ -477,6 +522,59 @@ status_t init_vit_kernel()
 	iowrite32(vit_dev, PT_ADDRESS_REG, (unsigned long) ptable_vit);
 	iowrite32(vit_dev, PT_NCHUNK_REG, NCHUNK(vitHW_size));
 	iowrite32(vit_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+  size_t sample_set_size = ENC_BYTES * sizeof(uint8_t);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // copy viterbi data to Viterbi sensor scratchpad
+  for (int i = 8; i < 12; i++)
+  {
+    input_vit_mem = (int64_t*) &(the_viterbi_trace_dict[i].in_bits[0]);
+    // printf("  memory = %p\n", input_rad_mem);
+
+    // Allocate and populate page table
+    ptable_sense_vit = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
+    
+		for (int j = 0; j < NCHUNK(sample_set_size); j++)
+      ptable_sense_vit[j] = (unsigned *) &input_vit_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
+
+    // printf("  ptable = %p\n", ptable_sense_fft);
+    // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
+
+    asm volatile ("fence w, w");
+
+    // Pass common configuration parameters 
+    iowrite32(vit_sense_dev, SELECT_REG, ioread32(vit_sense_dev, DEVID_REG));
+    iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+
+    iowrite32(vit_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_vit);
+    iowrite32(vit_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
+    iowrite32(vit_sense_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+    // Use the following if input and output data are not allocated at the default offsets
+    iowrite32(vit_sense_dev, SRC_OFFSET_REG, 0);
+    iowrite32(vit_sense_dev, DST_OFFSET_REG, 0);
+
+    // Pass accelerator-specific configuration parameters
+    /* <<--regs-config-->> */
+    iowrite32(vit_sense_dev, SENSOR_DMA_RD_SP_OFFSET_REG, sample_words*(i-8));
+    iowrite32(vit_sense_dev, SENSOR_DMA_RD_WR_ENABLE_REG, 0);
+    iowrite32(vit_sense_dev, SENSOR_DMA_RD_SIZE_REG, sample_words);
+    iowrite32(vit_sense_dev, SENSOR_DMA_SRC_OFFSET_REG, 0);
+
+    // Start accelerators
+    // printf("  Start...\n");
+    iowrite32(vit_sense_dev, CMD_REG, CMD_MASK_START);
+
+    // Wait for completion
+    unsigned done = 0;
+    while (!done) {
+      done = ioread32(vit_sense_dev, STATUS_REG);
+      done &= STATUS_MASK_DONE;
+    }
+    iowrite32(vit_sense_dev, CMD_REG, 0x0);
+    // printf("  Done...\n");
+  }
 #endif // if HW_VIT
 
   vitHW_desc.run = true;
@@ -745,10 +843,83 @@ void post_execute_cv_kernel(label_t tr_val, label_t cv_object)
 
 radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
 {
+  // printf("  aaaaa\n");
   DEBUG(printf("In iterate_rad_kernel\n"));
   unsigned tr_val = nearest_dist[vs.lane] / RADAR_BUCKET_DISTANCE;  // The proper message for this time step and car-lane
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
   MIN_DEBUG(printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]));
+  
+#if 0
+  // copy radar data to CPU cache
+  size_t sample_set_size = 2 * MAX_RADAR_N * sizeof(float);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // Allocate and populate page table
+  ptable_sense_fft = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
+  
+  // printf("  bbbbb\n");
+
+  for (int j = 0; j < NCHUNK(sample_set_size); j++)
+    ptable_sense_fft[j] = (unsigned *) &input_rad_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
+
+  // printf("  ptable = %p\n", ptable_sense_fft);
+  // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
+
+  asm volatile ("fence w, w");
+
+	// Configure Spandex request types
+#if (FFT_SPANDEX_MODE > 1)
+	spandex_config_t spandex_config;
+	spandex_config.spandex_reg = 0;
+#if (FFT_SPANDEX_MODE == 2)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 1;
+#elif (FFT_SPANDEX_MODE == 3)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_type = 1;
+#elif (FFT_SPANDEX_MODE == 4)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_op = 1;
+	spandex_config.w_type = 1;
+#endif
+	iowrite32(fft_sense_dev, SPANDEX_REG, spandex_config.spandex_reg);
+#endif
+
+  // Pass common configuration parameters 
+  iowrite32(fft_sense_dev, SELECT_REG, ioread32(fft_sense_dev, DEVID_REG));
+  iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+
+  iowrite32(fft_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_fft);
+  iowrite32(fft_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
+  iowrite32(fft_sense_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+  // Use the following if input and output data are not allocated at the default offsets
+  iowrite32(fft_sense_dev, SRC_OFFSET_REG, 0);
+  iowrite32(fft_sense_dev, DST_OFFSET_REG, 0);
+
+  /* <<--regs-config-->> */
+  iowrite32(fft_sense_dev, SENSOR_DMA_WR_SP_OFFSET_REG, sample_words * tr_val);
+  iowrite32(fft_sense_dev, SENSOR_DMA_RD_WR_ENABLE_REG, 1);
+  iowrite32(fft_sense_dev, SENSOR_DMA_WR_SIZE_REG, sample_words);
+  iowrite32(fft_sense_dev, SENSOR_DMA_DST_OFFSET_REG, 0);
+
+  // Start a_ccelerators
+  // printf("  Start... tr_val = %d\n", tr_val);
+  iowrite32(fft_sense_dev, CMD_REG, CMD_MASK_START);
+
+  // Wait for completion
+  unsigned done = 0;
+  while (!done) {
+    done = ioread32(fft_sense_dev, STATUS_REG);
+    done &= STATUS_MASK_DONE;
+  }
+  iowrite32(fft_sense_dev, CMD_REG, 0x0);
+  // printf("  Done...\n");
+#endif
 
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
   return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
@@ -889,6 +1060,83 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
     break;
   }
   DEBUG(printf(" VIT: Using msg %u Id %u : %s \n", trace_msg->msg_num, trace_msg->msg_id, message_names[trace_msg->msg_id]));
+
+#if 0
+  // copy viterbi data to the viterbi cache
+  size_t sample_set_size = ENC_BYTES * sizeof(uint8_t);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // Allocate and populate page table
+  ptable_sense_vit = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
+  
+  input_vit_mem = (int64_t*) &(vitHW_li_mem[72]);
+
+  for (int j = 0; j < NCHUNK(sample_set_size); j++)
+    ptable_sense_vit[j] = (unsigned *) &input_vit_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
+
+  // printf("  ptable = %p\n", ptable_sense_fft);
+  // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
+
+  asm volatile ("fence w, w");
+
+	// Configure Spandex request types
+#if (VIT_SPANDEX_MODE > 1)
+	spandex_config_t spandex_config;
+	spandex_config.spandex_reg = 0;
+#if (VIT_SPANDEX_MODE == 2)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 1;
+#elif (VIT_SPANDEX_MODE == 3)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_type = 1;
+#elif (VIT_SPANDEX_MODE == 4)
+	spandex_config.r_en = 1;
+	spandex_config.r_type = 2;
+	spandex_config.w_en = 1;
+	spandex_config.w_op = 1;
+	spandex_config.w_type = 1;
+	spandex_config.w_cid = 5;
+#endif
+	iowrite32(vit_sense_dev, SPANDEX_REG, spandex_config.spandex_reg);
+#endif
+
+  // Pass common configuration parameters 
+  iowrite32(vit_sense_dev, SELECT_REG, ioread32(vit_sense_dev, DEVID_REG));
+  iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+
+  iowrite32(vit_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_vit);
+  iowrite32(vit_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
+  iowrite32(vit_sense_dev, PT_SHIFT_REG, CHUNK_SHIFT);
+
+  // Use the following if input and output data are not allocated at the default offsets
+  iowrite32(vit_sense_dev, SRC_OFFSET_REG, 0);
+  iowrite32(vit_sense_dev, DST_OFFSET_REG, 0);
+
+  /* <<--regs-config-->> */
+  iowrite32(vit_sense_dev, SENSOR_DMA_WR_SP_OFFSET_REG, sample_words * tr_val);
+  iowrite32(vit_sense_dev, SENSOR_DMA_RD_WR_ENABLE_REG, 1);
+  iowrite32(vit_sense_dev, SENSOR_DMA_WR_SIZE_REG, sample_words);
+  iowrite32(vit_sense_dev, SENSOR_DMA_DST_OFFSET_REG, 0);
+
+  // printf("  bbbbb %d\n", tr_val);
+
+  // Start a_ccelerators
+  // printf("  Start... tr_val = %d\n", tr_val);
+  iowrite32(vit_sense_dev, CMD_REG, CMD_MASK_START);
+
+  // Wait for completion
+  unsigned done = 0;
+  while (!done) {
+    done = ioread32(vit_sense_dev, STATUS_REG);
+    done &= STATUS_MASK_DONE;
+  }
+  iowrite32(vit_sense_dev, CMD_REG, 0x0);
+
+  // printf("  ccccc\n");
+#endif
+
   return trace_msg;
 }
 
@@ -1116,5 +1364,3 @@ void closeout_vit_kernel()
   }
   MIN_DEBUG(printf("\n"));
 }
-
-

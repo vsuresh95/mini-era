@@ -99,6 +99,7 @@ unsigned max_time_steps = 5000; // The max time steps to simulate (default to 50
 
 struct esp_device *espdevs;
 struct esp_device *fft_dev, *vit_dev;
+struct esp_device *fft_sense_dev, *vit_sense_dev;
 int ndev;
 
 int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
@@ -187,6 +188,15 @@ int main(int argc, char *argv[])
 	  }
 
 	  fft_dev = &espdevs[0];
+
+	  ndev = probe(&espdevs, VENDOR_SLD, SLD_SENSOR_DMA, SENSE_DEV_NAME);
+	  if (ndev == 0) {
+	  	printf("sensor DMA not found\n");
+	  	return 0;
+	  }
+
+	  fft_sense_dev = &espdevs[0];
+	  vit_sense_dev = &espdevs[1];
   }
 #endif // if HW_FFT
 
@@ -289,7 +299,7 @@ int main(int argc, char *argv[])
     start_prog = get_counter();
   }
  
-  // hardcoded for 100 trace samples
+  // hardcoded for 'ITERATIONS' trace samples
   for (int i = 0; i < ITERATIONS; i++)
   {
     #ifdef TWO_CORE_SCHED
@@ -305,6 +315,8 @@ int main(int argc, char *argv[])
     amo_add (&checkpoint, 1);
     while(checkpoint != (14+4*i));
     
+    // printf("  fffff\n");
+
     MIN_DEBUG(printf("Vehicle_State: Lane %u %s Speed %d\n", vehicle_state.lane, lane_names[vehicle_state.lane], (int) vehicle_state.speed));
 
     /* The radar kernel performs distance estimation on the next radar
@@ -333,10 +345,12 @@ int main(int argc, char *argv[])
     if (hartid == 1)
     #endif
     {
+      // printf("  hhhhh\n");
       start_iter_vit = get_counter();
       vdentry_p = iterate_vit_kernel(vehicle_state);
       stop_iter_vit = get_counter();
       intvl_iter_vit += stop_iter_vit - start_iter_vit;
+      // printf("  iiiii\n");
     }
 
     #ifdef TWO_CORE_SCHED
@@ -351,12 +365,14 @@ int main(int argc, char *argv[])
       MIN_DEBUG(printf("\nBack from execute_rad_kernel... distance = %d\n", (int) distance));
       stop_exec_rad = get_counter();
       intvl_exec_rad += stop_exec_rad - start_exec_rad;
+      // printf("  ggggg\n");
     }
 
     #ifdef TWO_CORE_SCHED
     if (hartid == 1)
     #endif
     {
+      // printf("  jjjjj\n");
       start_exec_vit = get_counter();
       //BM: added print
       MIN_DEBUG(printf("\nInvoking execute_vit_kernel...\n"));
@@ -365,6 +381,7 @@ int main(int argc, char *argv[])
       MIN_DEBUG(printf("\nBack from execute_vit_kernel... message = %d\n", message));
       stop_exec_vit = get_counter();
       intvl_exec_vit += stop_exec_vit - start_exec_vit;
+      // printf("  kkkkk\n");
     }
 
     // POST-EXECUTE each kernels to gather stats, etc.
@@ -373,6 +390,7 @@ int main(int argc, char *argv[])
     #endif
     {
       post_execute_rad_kernel(rdentry_p->set, rdentry_p->index_in_set, rdict_dist, distance);
+      // printf("  ddddd\n");
     }
 
     #ifdef TWO_CORE_SCHED
@@ -382,11 +400,14 @@ int main(int argc, char *argv[])
       for (int mi = 0; mi < num_vit_msgs; mi++) {
         post_execute_vit_kernel(vdentry_p->msg_id, message);
       }
+      // printf("  eeeee\n");
     }
 
     amo_add (&checkpoint, 1);
     while(checkpoint != (16+4*i));
     
+    // printf("  fffff\n");
+
     /* The plan_and_control() function makes planning and control decisions
      * based on the currently perceived information. It returns the new
      * vehicle state.

@@ -179,11 +179,20 @@ static void fft_in_hw(struct fftHW_access *desc)
 float calculate_peak_dist_from_fmcw(float* data)
 {
 #ifdef DOUBLE_WORD
+  
+  typedef union float_val {
+    unsigned int int_val;
+    float flt_val;
+  } float_val;
+
 	int value_32_1;
 	int value_32_2;
   float value_32_1_f;
   float value_32_2_f;
   int64_t value_64;
+
+  float_val new_value_32_1;
+  float_val new_value_32_2;
 
   // unsigned shift_int = 0x3f800000 + 0x800000 * (32 - FX_IL);
   // float *shift = (float *) &shift_int;
@@ -200,15 +209,66 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_br_stop = get_counter();
   fft_br_intvl += fft_br_stop - calc_start;
 
+  // printf("  ccccc\n");
+
   fft_cvtin_start = get_counter();
 
 #ifdef DOUBLE_WORD
   // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
+#if 0
+#if (FFT_SPANDEX_MODE == 2)
+		void* dst = (void*)(input_rad_mem+(j/2));
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x2002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#elif (FFT_SPANDEX_MODE > 2)
+		void* dst = (void*)(input_rad_mem+(j/2));
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x4002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#else
+		void* dst = (void*)(input_rad_mem+(j/2));
+
+		asm volatile (
+			"mv t0, %1;"
+			".word 0x0002B30B;"
+			"mv %0, t1"
+			: "=r" (value_64)
+			: "r" (dst)
+			: "t0", "t1", "memory"
+		);
+#endif
+
+	  new_value_32_1.int_val = (value_64 & 0xFFFFFFFF);
+	  new_value_32_2.int_val = ((value_64 >> 32) & 0xFFFFFFFF);
+	  // value_32_1_f = (value_64 & 0xFFFFFFFF);
+	  // value_32_2_f = ((value_64 >> 32) & 0xFFFFFFFF);
+
+	  value_32_1 = float2fx(new_value_32_1.flt_val, FX_IL);
+	  value_32_2 = float2fx(new_value_32_2.flt_val, FX_IL);
+#else
 	  value_32_1 = float2fx(data[j], FX_IL);
 	  value_32_2 = float2fx(data[j+1], FX_IL);
+#endif
 	  // value_32_1 = (int)(data[j] * (*shift));
 	  // value_32_2 = (int)(data[j+1] * (*shift));
+
+    // if(j < 50) printf("dst = %p, value_64 = %lx\n", dst, value_64);
+    // if(j < 50) printf("1 half = %x, 2 half = %x\n", new_value_32_1.int_val, new_value_32_2.int_val);
+    // if(j < 50) printf("value_32_1 = %x value_32_2 = %x\n", value_32_1, value_32_2);
 
 	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
 	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
@@ -230,7 +290,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
-			".word 0x2462B82B"
+			".word 0x2862B82B"
 			: 
 			: "r" (dst), "r" (value_64)
 			: "t0", "t1", "memory"
@@ -262,6 +322,8 @@ float calculate_peak_dist_from_fmcw(float* data)
 
   fft_cvtin_stop = get_counter();
   fft_cvtin_intvl += fft_cvtin_stop - fft_cvtin_start;
+
+  // printf("  ddddd\n");
 
 	store_rl();
 
@@ -334,6 +396,8 @@ float calculate_peak_dist_from_fmcw(float* data)
 
   calc_stop = get_counter();
   calc_intvl += calc_stop - calc_start;
+
+  // printf("  eeeee\n");
 #else
   // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j++) {
