@@ -413,11 +413,12 @@ int main(int argc, char *argv[])
     {
       MIN_DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance));
       vehicle_state = plan_and_control(label, distance, message, vehicle_state);
+      MIN_DEBUG(printf("New vehicle state: lane %u speed %d\n", vehicle_state.lane, (int) vehicle_state.speed));
 
       stop_prog = get_counter();
       intvl_prog += stop_prog - start_prog;
 
-      printf("New vehicle state: lane %u speed %d\n", vehicle_state.lane, (int) vehicle_state.speed);
+      printf("Time Step %3u : Message %u and distance %d\n", time_step, message, (int) distance);
 
       time_step++;
     }
