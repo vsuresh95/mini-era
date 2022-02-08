@@ -274,7 +274,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
 
 #if (FFT_SPANDEX_MODE == 3)
-		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
+		dst = (void*)((int64_t)(fftHW_li_mem+j));
 
 		asm volatile (
 			"mv t0, %0;"
