@@ -292,13 +292,6 @@ int main(int argc, char *argv[])
   while(checkpoint != 12);
   #endif
 
-  #ifdef TWO_CORE_SCHED
-  if (hartid == 0)
-  #endif
-  {
-    start_prog = get_counter();
-  }
- 
   // hardcoded for 'ITERATIONS' trace samples
   for (int i = 0; i < ITERATIONS; i++)
   {
@@ -306,6 +299,8 @@ int main(int argc, char *argv[])
     if (hartid == 0)
     #endif
     {
+      start_prog = get_counter();
+
       if (!read_next_trace_record(vehicle_state))
       {
         break;
@@ -406,7 +401,7 @@ int main(int argc, char *argv[])
     amo_add (&checkpoint, 1);
     while(checkpoint != (16+4*i));
     
-    // printf("  fffff\n");
+    // printf("  ggggg\n");
 
     /* The plan_and_control() function makes planning and control decisions
      * based on the currently perceived information. It returns the new
@@ -418,7 +413,11 @@ int main(int argc, char *argv[])
     {
       MIN_DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance));
       vehicle_state = plan_and_control(label, distance, message, vehicle_state);
-      MIN_DEBUG(printf("New vehicle state: lane %u speed %d\n\n", vehicle_state.lane, (int) vehicle_state.speed));
+
+      stop_prog = get_counter();
+      intvl_prog += stop_prog - start_prog;
+
+      printf("New vehicle state: lane %u speed %d\n", vehicle_state.lane, (int) vehicle_state.speed);
 
       time_step++;
     }
@@ -428,9 +427,6 @@ int main(int argc, char *argv[])
   if (hartid == 0)
   #endif
   {
-    stop_prog = get_counter();
-    intvl_prog = stop_prog - start_prog;
-
     /* All the trace/simulation-time has been completed -- Quitting... */
     printf("\nRun completed %u time steps\n", time_step);
 
@@ -469,8 +465,9 @@ int main(int argc, char *argv[])
     printf("\nProgram total execution time     %lu cycles\n", intvl_prog/ITERATIONS);
 
     printf("\nDone.\n");
-    return 0;
-  } else {
-    while(1);
   }
+  
+  while(1);
+
+  return 0;
 }
