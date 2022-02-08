@@ -868,7 +868,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 
     imi += 2; // Padding
 
-#if 1
+#if 0
 #ifdef DOUBLE_WORD
 	{
 		int ti = 0;

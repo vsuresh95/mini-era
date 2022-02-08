@@ -216,7 +216,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 #ifdef DOUBLE_WORD
   // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
-#if 0
+#if 1
 #if (FFT_SPANDEX_MODE == 2)
 		void* dst = (void*)(input_rad_mem+(j/2));
 
@@ -285,7 +285,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #elif (FFT_SPANDEX_MODE == 4)
-		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
+		dst = (void*)((int64_t)(fftHW_li_mem+j));
 
 		asm volatile (
 			"mv t0, %0;"
@@ -296,7 +296,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #else
- 		void* dst = (void*)((int64_t)(fftHW_li_mem+j));
+ 		dst = (void*)((int64_t)(fftHW_li_mem+j));
 
 		asm volatile (
 			"mv t0, %0;"

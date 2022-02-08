@@ -530,7 +530,7 @@ status_t init_vit_kernel()
   for (int i = 8; i < 12; i++)
   {
     input_vit_mem = (int64_t*) &(the_viterbi_trace_dict[i].in_bits[0]);
-    // printf("  memory = %p\n", input_rad_mem);
+    // printf("  memory = %p\n", input_vit_mem);
 
     // Allocate and populate page table
     ptable_sense_vit = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
@@ -849,7 +849,7 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
   MIN_DEBUG(printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]));
   
-#if 0
+#if 1
   // copy radar data to CPU cache
   size_t sample_set_size = 2 * MAX_RADAR_N * sizeof(float);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
@@ -891,7 +891,11 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
 
   // Pass common configuration parameters 
   iowrite32(fft_sense_dev, SELECT_REG, ioread32(fft_sense_dev, DEVID_REG));
+#if (FFT_SPANDEX_MODE == 1)
+  iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_RECALL);
+#else
   iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+#endif
 
   iowrite32(fft_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_fft);
   iowrite32(fft_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
@@ -1061,7 +1065,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   }
   DEBUG(printf(" VIT: Using msg %u Id %u : %s \n", trace_msg->msg_num, trace_msg->msg_id, message_names[trace_msg->msg_id]));
 
-#if 0
+#if 1
   // copy viterbi data to the viterbi cache
   size_t sample_set_size = ENC_BYTES * sizeof(uint8_t);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
@@ -1070,6 +1074,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   ptable_sense_vit = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
   
   input_vit_mem = (int64_t*) &(vitHW_li_mem[72]);
+  // printf("  input_vit_mem = %p\n", input_vit_mem);
 
   for (int j = 0; j < NCHUNK(sample_set_size); j++)
     ptable_sense_vit[j] = (unsigned *) &input_vit_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
@@ -1104,7 +1109,11 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
 
   // Pass common configuration parameters 
   iowrite32(vit_sense_dev, SELECT_REG, ioread32(vit_sense_dev, DEVID_REG));
-  iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+#if (VIT_SPANDEX_MODE == 1)
+  iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_RECALL);
+#else
+  iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+#endif
 
   iowrite32(vit_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_vit);
   iowrite32(vit_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
