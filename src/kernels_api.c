@@ -1110,9 +1110,9 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   // Pass common configuration parameters 
   iowrite32(vit_sense_dev, SELECT_REG, ioread32(vit_sense_dev, DEVID_REG));
 #if (VIT_SPANDEX_MODE == 1)
-  iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_RECALL);
+  iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_RECALL);
 #else
-  iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+  iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_FULL);
 #endif
 
   iowrite32(vit_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_vit);
