@@ -179,7 +179,7 @@ static void init_fft_parameters()
 	fftHW_out_len =  fftHW_out_words_adj;
 	fftHW_in_size = fftHW_in_len * sizeof(fftHW_token_t);
 	fftHW_out_size = fftHW_out_len * sizeof(fftHW_token_t);
-	fftHW_out_offset = fftHW_in_size;
+	fftHW_out_offset = fftHW_in_len;
 	fftHW_size = (fftHW_out_offset * sizeof(fftHW_token_t)) + fftHW_out_size;
 }
 #endif
