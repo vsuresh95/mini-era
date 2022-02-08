@@ -269,6 +269,8 @@ int main(int argc, char *argv[])
 
     stop_init_vit = get_counter();
     intvl_init_vit = stop_init_vit - start_init_vit;
+
+    esp_flush(ACC_COH_NONE);
   }
 
   #ifdef TWO_CORE_SCHED

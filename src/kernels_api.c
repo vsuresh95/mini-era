@@ -209,7 +209,7 @@ status_t init_rad_kernel()
     
   //BM: Allocating memory space for the radar return dict
   // the_radar_return_dict = (radar_dict_entry_t**)aligned_malloc(num_radar_samples_sets*radar_dict_items_per_set*sizeof(radar_dict_entry_t));
-  the_radar_return_dict = (radar_dict_entry_t**) aligned_malloc(num_radar_samples_sets * (sizeof(radar_dict_entry_t) + 2*MAX_RADAR_N*sizeof(float)));
+  the_radar_return_dict = (radar_dict_entry_t**) aligned_malloc(num_radar_samples_sets * sizeof(radar_dict_entry_t));
   if (the_radar_return_dict == NULL) {
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
     return error;
@@ -218,7 +218,7 @@ status_t init_rad_kernel()
   SIM_DEBUG(printf("the_radar_return_dict = %p, sizeof(radar_dict_entry_t) = %d\n", the_radar_return_dict, sizeof(radar_dict_entry_t)));
    
   for (int si = 0; si < num_radar_samples_sets; si++) {
-    the_radar_return_dict[si] = (radar_dict_entry_t*) aligned_malloc(radar_dict_items_per_set * (sizeof(radar_dict_entry_t)+ 2 * MAX_RADAR_N * sizeof(float)));
+    the_radar_return_dict[si] = (radar_dict_entry_t*) aligned_malloc(radar_dict_items_per_set * sizeof(radar_dict_entry_t));
     if (the_radar_return_dict[si] == NULL) {
       printf("ERROR : Cannot allocate Radar Trace Dictionary memory space for set %u\n", si);
       return error;
@@ -432,7 +432,7 @@ status_t init_vit_kernel()
   SIM_DEBUG(printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items));
 
   //BM
-  the_viterbi_trace_dict = (vit_dict_entry_t*) aligned_malloc(num_viterbi_dictionary_items * (sizeof(vit_dict_entry_t) + MAX_ENCODED_BITS*sizeof(uint8_t)));
+  the_viterbi_trace_dict = (vit_dict_entry_t*) aligned_malloc(num_viterbi_dictionary_items * sizeof(vit_dict_entry_t));
   if (the_viterbi_trace_dict == NULL) 
   {
     printf("ERROR : Cannot allocate Viterbi Trace Dictionary memory space\n");
