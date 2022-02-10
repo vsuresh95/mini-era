@@ -854,18 +854,24 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   size_t sample_set_size = 2 * MAX_RADAR_N * sizeof(float);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
 
-  // Allocate and populate page table
-  ptable_sense_fft = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
+  if (time_step == 0) {
+    // Allocate and populate page table
+    ptable_sense_fft = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
   
-  // printf("  bbbbb\n");
+    // printf("  bbbbb\n");
 
-  for (int j = 0; j < NCHUNK(sample_set_size); j++)
-    ptable_sense_fft[j] = (unsigned *) &input_rad_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
+    for (int j = 0; j < NCHUNK(sample_set_size); j++)
+      ptable_sense_fft[j] = (unsigned *) &input_rad_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
 
-  // printf("  ptable = %p\n", ptable_sense_fft);
-  // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
+    // printf("  ptable = %p\n", ptable_sense_fft);
+    // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
 
-  asm volatile ("fence w, w");
+    asm volatile ("fence rw, rw");
+
+    printf("ptable_sense_fft[0] = %x\n", ptable_sense_fft[0]);
+  } else if (time_step == 1) {
+    printf("ptable_sense_vit[0] = %x\n", ptable_sense_vit[0]);
+  }
 
 	// Configure Spandex request types
 #if (FFT_SPANDEX_MODE > 1)
@@ -1070,19 +1076,25 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   size_t sample_set_size = ENC_BYTES * sizeof(uint8_t);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
 
-  // Allocate and populate page table
-  ptable_sense_vit = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
+  if (time_step == 0) {
+    // Allocate and populate page table
+    ptable_sense_vit = aligned_malloc(NCHUNK(sample_set_size) * sizeof(unsigned *));
   
-  input_vit_mem = (int64_t*) &(vitHW_li_mem[72]);
-  // printf("  input_vit_mem = %p\n", input_vit_mem);
+    input_vit_mem = (int64_t*) &(vitHW_li_mem[72]);
+    // printf("  input_vit_mem = %p\n", input_vit_mem);
 
-  for (int j = 0; j < NCHUNK(sample_set_size); j++)
-    ptable_sense_vit[j] = (unsigned *) &input_vit_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
+    for (int j = 0; j < NCHUNK(sample_set_size); j++)
+      ptable_sense_vit[j] = (unsigned *) &input_vit_mem[j * (CHUNK_SIZE / sizeof(int64_t))];
 
-  // printf("  ptable = %p\n", ptable_sense_fft);
-  // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
+    // printf("  ptable = %p\n", ptable_sense_fft);
+    // printf("  nchunk = %lu\n", NCHUNK(sample_set_size));
 
-  asm volatile ("fence w, w");
+    asm volatile ("fence rw, rw");
+
+    printf("ptable_sense_vit[0] = %x\n", ptable_sense_vit[0]);
+  } else if (time_step == 1) {
+    printf("ptable_sense_fft[0] = %x\n", ptable_sense_fft[0]);
+  }
 
 	// Configure Spandex request types
 #if (VIT_SPANDEX_MODE > 1)
