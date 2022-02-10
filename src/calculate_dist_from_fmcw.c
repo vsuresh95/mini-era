@@ -194,6 +194,8 @@ float calculate_peak_dist_from_fmcw(float* data)
   float_val new_value_32_1;
   float_val new_value_32_2;
 
+  void* dst;
+
   // unsigned shift_int = 0x3f800000 + 0x800000 * (32 - FX_IL);
   // float *shift = (float *) &shift_int;
 #endif
@@ -216,9 +218,9 @@ float calculate_peak_dist_from_fmcw(float* data)
 #ifdef DOUBLE_WORD
   // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
-#if 1
+#ifdef USE_FFT_SENSOR
 #if (FFT_SPANDEX_MODE == 2)
-		void* dst = (void*)(input_rad_mem+(j/2));
+		dst = (void*)(input_rad_mem+(j/2));
 
 		asm volatile (
 			"mv t0, %1;"
@@ -229,7 +231,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #elif (FFT_SPANDEX_MODE > 2)
-		void* dst = (void*)(input_rad_mem+(j/2));
+		dst = (void*)(input_rad_mem+(j/2));
 
 		asm volatile (
 			"mv t0, %1;"
@@ -240,7 +242,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #else
-		void* dst = (void*)(input_rad_mem+(j/2));
+		dst = (void*)(input_rad_mem+(j/2));
 
 		asm volatile (
 			"mv t0, %1;"
@@ -259,10 +261,10 @@ float calculate_peak_dist_from_fmcw(float* data)
 
 	  value_32_1 = float2fx(new_value_32_1.flt_val, FX_IL);
 	  value_32_2 = float2fx(new_value_32_2.flt_val, FX_IL);
-#else
+#else // USE_FFT_SENSOR
 	  value_32_1 = float2fx(data[j], FX_IL);
 	  value_32_2 = float2fx(data[j+1], FX_IL);
-#endif
+#endif // USE_FFT_SENSOR
 	  // value_32_1 = (int)(data[j] * (*shift));
 	  // value_32_2 = (int)(data[j+1] * (*shift));
 
@@ -342,7 +344,7 @@ float calculate_peak_dist_from_fmcw(float* data)
   // convert fixed point to output
   for (int j = 0; j < 2 * RADAR_N; j+=2) {
 #if (FFT_SPANDEX_MODE == 2)
-		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+		dst = (void*)((uint64_t)(fftHW_lo_mem+j));
 
 		asm volatile (
 			"mv t0, %1;"
@@ -353,7 +355,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #elif (FFT_SPANDEX_MODE > 2)
-		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+		dst = (void*)((uint64_t)(fftHW_lo_mem+j));
 
 		asm volatile (
 			"mv t0, %1;"
@@ -364,7 +366,7 @@ float calculate_peak_dist_from_fmcw(float* data)
 			: "t0", "t1", "memory"
 		);
 #else
-		void* dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+		dst = (void*)((uint64_t)(fftHW_lo_mem+j));
 
 		asm volatile (
 			"mv t0, %1;"

@@ -321,6 +321,7 @@ status_t init_rad_kernel()
 	iowrite32(fft_dev, PT_NCHUNK_REG, NCHUNK(fftHW_size));
 	iowrite32(fft_dev, PT_SHIFT_REG, CHUNK_SHIFT);
 
+#ifdef USE_FFT_SENSOR
   size_t sample_set_size = 2 * MAX_RADAR_N * sizeof(float);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
 
@@ -377,6 +378,7 @@ status_t init_rad_kernel()
   // address to be used for all FFT input data streaming in from the sensor
   input_rad_mem = aligned_malloc(sample_set_size);
   printf("  input_rad_mem = %p\n", input_rad_mem);
+#endif // if USE_FFT_SENSOR
 #endif // if HW_FFT
 
   fftHW_desc.run = true;
@@ -523,6 +525,7 @@ status_t init_vit_kernel()
 	iowrite32(vit_dev, PT_NCHUNK_REG, NCHUNK(vitHW_size));
 	iowrite32(vit_dev, PT_SHIFT_REG, CHUNK_SHIFT);
 
+#ifdef USE_VIT_SENSOR
   size_t sample_set_size = ENC_BYTES * sizeof(uint8_t);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
 
@@ -575,6 +578,7 @@ status_t init_vit_kernel()
     iowrite32(vit_sense_dev, CMD_REG, 0x0);
     // printf("  Done...\n");
   }
+#endif // if USE_VIT_SENSOR
 #endif // if HW_VIT
 
   vitHW_desc.run = true;
@@ -849,7 +853,7 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
   MIN_DEBUG(printf("crit_fft_samples_set = %d tr_val = %d vs.lane = %d nearest_dist = %d\n", crit_fft_samples_set, tr_val, vs.lane, (int) nearest_dist[vs.lane]));
   
-#if 1
+#ifdef USE_FFT_SENSOR 
   // copy radar data to CPU cache
   size_t sample_set_size = 2 * MAX_RADAR_N * sizeof(float);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
@@ -929,7 +933,7 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   }
   iowrite32(fft_sense_dev, CMD_REG, 0x0);
   // printf("  Done...\n");
-#endif
+#endif // USE_FFT_SENSOR
 
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
   return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
@@ -1071,7 +1075,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   }
   DEBUG(printf(" VIT: Using msg %u Id %u : %s \n", trace_msg->msg_num, trace_msg->msg_id, message_names[trace_msg->msg_id]));
 
-#if 1
+#ifdef USE_VIT_SENSOR
   // copy viterbi data to the viterbi cache
   size_t sample_set_size = ENC_BYTES * sizeof(uint8_t);
   unsigned sample_words = sample_set_size/sizeof(int64_t);
@@ -1156,7 +1160,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   iowrite32(vit_sense_dev, CMD_REG, 0x0);
 
   // printf("  ccccc\n");
-#endif
+#endif // USE_VIT_SENSOR
 
   return trace_msg;
 }

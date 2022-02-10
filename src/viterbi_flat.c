@@ -868,7 +868,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 
     imi += 2; // Padding
 
-#if 0
+#ifndef USE_VIT_SENSOR 
 #ifdef DOUBLE_WORD
 	{
 		int ti = 0;
@@ -983,7 +983,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 #endif // DOUBLE_WORD
 
     if (imi != 24852) { MIN_DEBUG(printf("ERROR : imi = %u and should be 24852\n", imi)); }
-#endif
+#endif // USE_VIT_SENSOR
 
   	init_vit_buffer_stop = get_counter();
   	init_vit_buffer_intvl += init_vit_buffer_stop - init_vit_buffer_start;

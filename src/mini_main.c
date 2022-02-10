@@ -189,6 +189,7 @@ int main(int argc, char *argv[])
 
 	  fft_dev = &espdevs[0];
 
+#if (USE_FFT_SENSOR || USE_VIT_SENSOR)
 	  ndev = probe(&espdevs, VENDOR_SLD, SLD_SENSOR_DMA, SENSE_DEV_NAME);
 	  if (ndev == 0) {
 	  	printf("sensor DMA not found\n");
@@ -197,6 +198,7 @@ int main(int argc, char *argv[])
 
 	  fft_sense_dev = &espdevs[0];
 	  vit_sense_dev = &espdevs[1];
+#endif // (USE_FFT_SENSOR || USE_VIT_SENSOR)
   }
 #endif // if HW_FFT
 
@@ -270,7 +272,7 @@ int main(int argc, char *argv[])
     stop_init_vit = get_counter();
     intvl_init_vit = stop_init_vit - start_init_vit;
 
-    esp_flush(ACC_COH_NONE);
+    // esp_flush(ACC_COH_NONE);
   }
 
   #ifdef TWO_CORE_SCHED
