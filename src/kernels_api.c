@@ -874,7 +874,9 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
 
     printf("ptable_sense_fft[0] = %x\n", ptable_sense_fft[0]);
   } else if (time_step == 1) {
+#ifdef USE_VIT_SENSOR
     printf("ptable_sense_vit[0] = %x\n", ptable_sense_vit[0]);
+#endif
   }
 
 	// Configure Spandex request types
@@ -1097,7 +1099,9 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
 
     printf("ptable_sense_vit[0] = %x\n", ptable_sense_vit[0]);
   } else if (time_step == 1) {
+#ifdef USE_FFT_SENSOR
     printf("ptable_sense_fft[0] = %x\n", ptable_sense_fft[0]);
+#endif
   }
 
 	// Configure Spandex request types
