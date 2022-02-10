@@ -420,7 +420,7 @@ int main(int argc, char *argv[])
       stop_prog = get_counter();
       intvl_prog += stop_prog - start_prog;
 
-      printf("Time Step %3u : Message %u and distance %d\n", time_step, message, (int) distance);
+      // printf("Time Step %3u : Message %u and distance %d\n", time_step, message, (int) distance);
 
       time_step++;
     }
