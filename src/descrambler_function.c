@@ -67,7 +67,7 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 		state = ((state << 1) & 0x7e) | feedback;
 	}
 
-	for(int i = 8; i < (psdusize*8)+16; i+=8)
+	for(int i = 8; i < 17408; i+=8)
 	{
 #if (VIT_SPANDEX_MODE == 2)
 		void* dst = (void*)((uint64_t) in+i);
@@ -103,27 +103,29 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 			: "t0", "t1", "memory"
 		);
 #endif
-		value_8[0] = (value_64 >> 0) & 0xFF;
-		value_8[1] = (value_64 >> 8) & 0xFF;
-		value_8[2] = (value_64 >> 16) & 0xFF;
-		value_8[3] = (value_64 >> 24) & 0xFF;
-		value_8[4] = (value_64 >> 32) & 0xFF;
-		value_8[5] = (value_64 >> 40) & 0xFF;
-		value_8[6] = (value_64 >> 48) & 0xFF;
-		value_8[7] = (value_64 >> 56) & 0xFF;
+		if (i < (psdusize*8)+16) {
+			value_8[0] = (value_64 >> 0) & 0xFF;
+			value_8[1] = (value_64 >> 8) & 0xFF;
+			value_8[2] = (value_64 >> 16) & 0xFF;
+			value_8[3] = (value_64 >> 24) & 0xFF;
+			value_8[4] = (value_64 >> 32) & 0xFF;
+			value_8[5] = (value_64 >> 40) & 0xFF;
+			value_8[6] = (value_64 >> 48) & 0xFF;
+			value_8[7] = (value_64 >> 56) & 0xFF;
 
-		for (int j = 0; j < 8; j++)
-		{
-			feedback = ((!!(state & 64))) ^ (!!(state & 8));
-			bit = feedback ^ (value_8[j] & 0x1);
-			index = i/8;
-			mod = j;
-			int comp1, comp2, val;
-			comp1 = (bit << mod);
-			val = out[index];
-			comp2 = val | comp1;
-			out[index] =  comp2;
-			state = ((state << 1) & 0x7e) | feedback;
+			for (int j = 0; j < 8; j++)
+			{
+				feedback = ((!!(state & 64))) ^ (!!(state & 8));
+				bit = feedback ^ (value_8[j] & 0x1);
+				index = i/8;
+				mod = j;
+				int comp1, comp2, val;
+				comp1 = (bit << mod);
+				val = out[index];
+				comp2 = val | comp1;
+				out[index] =  comp2;
+				state = ((state << 1) & 0x7e) | feedback;
+			}
 		}
 	}
 #else
