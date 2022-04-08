@@ -48,6 +48,8 @@
  #define VITDODEC_CBPS_REG 0x48
  #define VITDODEC_NTRACEBACK_REG 0x44
  #define VITDODEC_DATA_BITS_REG 0x40
+ #define VITDODEC_IN_LENGTH_REG 0x4C
+ #define VITDODEC_OUT_LENGTH_REG 0x50
 #endif
 
 uint64_t depunc_start;
@@ -149,6 +151,8 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	iowrite32(vit_dev, VITDODEC_CBPS_REG, desc->cbps);
 	iowrite32(vit_dev, VITDODEC_NTRACEBACK_REG, desc->ntraceback);
 	iowrite32(vit_dev, VITDODEC_DATA_BITS_REG, desc->data_bits);
+	iowrite32(vit_dev, VITDODEC_IN_LENGTH_REG, 24852);
+	iowrite32(vit_dev, VITDODEC_OUT_LENGTH_REG, 18585);
 	iowrite32(vit_dev, SRC_OFFSET_REG, 0x0);
 	iowrite32(vit_dev, DST_OFFSET_REG, 0x0);
 
