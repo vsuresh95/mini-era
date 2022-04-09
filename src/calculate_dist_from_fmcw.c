@@ -194,10 +194,10 @@ float calculate_peak_dist_from_fmcw(float* data)
   float_val new_value_32_1;
   float_val new_value_32_2;
 
-  void* dst;
+  void* dst_read;
+  void* dst_write;
+  unsigned n_rad = RADAR_N;
 
-  // unsigned shift_int = 0x3f800000 + 0x800000 * (32 - FX_IL);
-  // float *shift = (float *) &shift_int;
 #endif
 
   calc_start = get_counter();
@@ -216,48 +216,45 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_cvtin_start = get_counter();
 
 #ifdef DOUBLE_WORD
+  dst_read = (void*) input_rad_mem;
+  dst_write = (void*) ((int64_t) fftHW_li_mem);
+
   // convert input to fixed point
-  for (int j = 0; j < 2 * RADAR_N; j+=2) {
+  for (int j = 0; j < 2 * n_rad; j+=2) {
 #ifdef USE_FFT_SENSOR
 #if (FFT_SPANDEX_MODE == 2)
-		dst = (void*)(input_rad_mem+(j/2));
-
 		asm volatile (
 			"mv t0, %1;"
 			".word 0x2002B30B;"
 			"mv %0, t1"
 			: "=r" (value_64)
-			: "r" (dst)
+			: "r" (dst_read)
 			: "t0", "t1", "memory"
 		);
 #elif (FFT_SPANDEX_MODE > 2)
-		dst = (void*)(input_rad_mem+(j/2));
-
 		asm volatile (
 			"mv t0, %1;"
 			".word 0x4002B30B;"
 			"mv %0, t1"
 			: "=r" (value_64)
-			: "r" (dst)
+			: "r" (dst_read)
 			: "t0", "t1", "memory"
 		);
 #else
-		dst = (void*)(input_rad_mem+(j/2));
-
 		asm volatile (
 			"mv t0, %1;"
 			".word 0x0002B30B;"
 			"mv %0, t1"
 			: "=r" (value_64)
-			: "r" (dst)
+			: "r" (dst_read)
 			: "t0", "t1", "memory"
 		);
 #endif
 
+    dst_read += 8;
+
 	  new_value_32_1.int_val = (value_64 & 0xFFFFFFFF);
 	  new_value_32_2.int_val = ((value_64 >> 32) & 0xFFFFFFFF);
-	  // value_32_1_f = (value_64 & 0xFFFFFFFF);
-	  // value_32_2_f = ((value_64 >> 32) & 0xFFFFFFFF);
 
 	  value_32_1 = float2fx(new_value_32_1.flt_val, FX_IL);
 	  value_32_2 = float2fx(new_value_32_2.flt_val, FX_IL);
@@ -265,50 +262,41 @@ float calculate_peak_dist_from_fmcw(float* data)
 	  value_32_1 = float2fx(data[j], FX_IL);
 	  value_32_2 = float2fx(data[j+1], FX_IL);
 #endif // USE_FFT_SENSOR
-	  // value_32_1 = (int)(data[j] * (*shift));
-	  // value_32_2 = (int)(data[j+1] * (*shift));
-
-    // if(j < 50) printf("dst = %p, value_64 = %lx\n", dst, value_64);
-    // if(j < 50) printf("1 half = %x, 2 half = %x\n", new_value_32_1.int_val, new_value_32_2.int_val);
-    // if(j < 50) printf("value_32_1 = %x value_32_2 = %x\n", value_32_1, value_32_2);
 
 	  value_64 = ((int64_t) value_32_1) & 0xFFFFFFFF;
 	  value_64 |= (((int64_t) value_32_2) << 32) & 0xFFFFFFFF00000000;
 
 #if (FFT_SPANDEX_MODE == 3)
-		dst = (void*)((int64_t)(fftHW_li_mem+j));
-
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
 			".word 0x2062B02B"
 			: 
-			: "r" (dst), "r" (value_64)
+			: "r" (dst_write), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
 #elif (FFT_SPANDEX_MODE == 4)
-		dst = (void*)((int64_t)(fftHW_li_mem+j));
-
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
 			".word 0x2862B82B"
 			: 
-			: "r" (dst), "r" (value_64)
+			: "r" (dst_write), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
 #else
- 		dst = (void*)((int64_t)(fftHW_li_mem+j));
-
 		asm volatile (
 			"mv t0, %0;"
 			"mv t1, %1;"
 			".word 0x0062B02B"
 			: 
-			: "r" (dst), "r" (value_64)
+			: "r" (dst_write), "r" (value_64)
 			: "t0", "t1", "memory"
 		);
 #endif
+
+    dst_write += 8;
+
 #else
   // convert input to fixed point
   for (int j = 0; j < 2 * RADAR_N; j++) {
@@ -341,50 +329,46 @@ float calculate_peak_dist_from_fmcw(float* data)
   unsigned int i;
   float temp;
 
-  // convert fixed point to output
-  for (int j = 0; j < 2 * RADAR_N; j+=2) {
-#if (FFT_SPANDEX_MODE == 2)
-		dst = (void*)((uint64_t)(fftHW_lo_mem+j));
+  dst_read = (void*) ((uint64_t) fftHW_lo_mem);
 
+  // convert fixed point to output
+  for (int j = 0; j < 2 * n_rad; j+=2) {
+#if (FFT_SPANDEX_MODE == 2)
 		asm volatile (
 			"mv t0, %1;"
 			".word 0x2002B30B;"
 			"mv %0, t1"
 			: "=r" (value_64)
-			: "r" (dst)
+			: "r" (dst_read)
 			: "t0", "t1", "memory"
 		);
 #elif (FFT_SPANDEX_MODE > 2)
-		dst = (void*)((uint64_t)(fftHW_lo_mem+j));
-
 		asm volatile (
 			"mv t0, %1;"
 			".word 0x4002B30B;"
 			"mv %0, t1"
 			: "=r" (value_64)
-			: "r" (dst)
+			: "r" (dst_read)
 			: "t0", "t1", "memory"
 		);
 #else
-		dst = (void*)((uint64_t)(fftHW_lo_mem+j));
-
 		asm volatile (
 			"mv t0, %1;"
 			".word 0x0002B30B;"
 			"mv %0, t1"
 			: "=r" (value_64)
-			: "r" (dst)
+			: "r" (dst_read)
 			: "t0", "t1", "memory"
 		);
 #endif
 
+    dst_read += 8;
+
 	  value_32_1 = value_64 & 0xFFFFFFFF;
     value_32_1_f = (float)fx2float(value_32_1, FX_IL);
-    // value_32_1_f = (float)((*shift) * (float) value_32_1);
 
 	  value_32_2 = (value_64 >> 32) & 0xFFFFFFFF;
     value_32_2_f = (float)fx2float(value_32_2, FX_IL);
-    // value_32_2_f = (float)((*shift) * (float) value_32_2);
 
     temp = (pow(value_32_1_f,2) + pow(value_32_2_f,2))/100.0;
     if (temp > max_psd) {
