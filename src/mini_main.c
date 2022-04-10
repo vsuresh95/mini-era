@@ -311,8 +311,10 @@ int main(int argc, char *argv[])
       }
     }
 
-    amo_add (&checkpoint, 1);
+    checkpoint++;
+    asm volatile ("fence w, rw");
     while(checkpoint != (14+4*i));
+    asm volatile ("fence r, rw");
     
     // printf("  fffff\n");
 
@@ -328,7 +330,7 @@ int main(int argc, char *argv[])
       start_iter_rad = get_counter();
       rdentry_p = iterate_rad_kernel(vehicle_state);
       stop_iter_rad = get_counter();
-      intvl_iter_rad += stop_iter_rad - start_iter_rad;
+      if (time_step > 1) intvl_iter_rad += stop_iter_rad - start_iter_rad;
 
       rdict_dist = rdentry_p->distance;
     }
@@ -348,7 +350,7 @@ int main(int argc, char *argv[])
       start_iter_vit = get_counter();
       vdentry_p = iterate_vit_kernel(vehicle_state);
       stop_iter_vit = get_counter();
-      intvl_iter_vit += stop_iter_vit - start_iter_vit;
+      if (time_step > 1) intvl_iter_vit += stop_iter_vit - start_iter_vit;
       // printf("  iiiii\n");
     }
 
@@ -402,9 +404,11 @@ int main(int argc, char *argv[])
       // printf("  eeeee\n");
     }
 
-    amo_add (&checkpoint, 1);
+    checkpoint++;
+    asm volatile ("fence w, rw");
     while(checkpoint != (16+4*i));
-    
+    asm volatile ("fence r, rw");
+
     // printf("  ggggg\n");
 
     /* The plan_and_control() function makes planning and control decisions
@@ -439,32 +443,19 @@ int main(int argc, char *argv[])
     closeout_rad_kernel();
     closeout_vit_kernel();
 
-    printf("  init_rad_kernel run time    %lu cycles\n", intvl_init_rad);
-    printf("  init_vit_kernel run time    %lu cycles\n", intvl_init_vit);
-
     printf("  iterate_rad_kernel run time    %lu cycles\n", intvl_iter_rad/ITERATIONS);
     printf("  iterate_vit_kernel run time    %lu cycles\n", intvl_iter_vit/ITERATIONS);
 
     // These are timings taken from called routines...
     printf("\n");
     printf("  execute_rad_kernel run time    %lu cycles\n", intvl_exec_rad/ITERATIONS);
-    printf("  fft-total   run time    %lu cycles\n", calc_intvl/ITERATIONS);
-#ifdef HW_FFT
-    printf("  bitrev      run time    %lu cycles\n", fft_br_intvl/ITERATIONS);
-#else 
-    printf("  bit-reverse run time    %lu cycles\n", bitrev_intvl/ITERATIONS);
-#endif
     printf("  fft_cvtin   run time    %lu cycles\n", fft_cvtin_intvl/ITERATIONS);
     printf("  fft-comp    run time    %lu cycles\n", fft_intvl/ITERATIONS);
     printf("  fft_cvtout  run time    %lu cycles\n", fft_cvtout_intvl/ITERATIONS);
-    printf("  calc-dist   run time    %lu cycles\n", cdfmcw_intvl/ITERATIONS);
 
     printf("\n");
     printf("  execute_vit_kernel run time    %lu cycles\n", intvl_exec_vit/ITERATIONS);
-    printf("  init_vit_buffer run time    %lu cycles\n", init_vit_buffer_intvl/ITERATIONS);
-    printf("  depuncture  run time    %lu cycles\n", depunc_intvl/ITERATIONS);
     printf("  do-decoding run time    %lu cycles\n", dodec_intvl/ITERATIONS);
-    printf("  copy_vit_buffer run time    %lu cycles\n", copy_vit_buffer_intvl/ITERATIONS);
     printf("  descram run time    %lu cycles\n", descram_intvl/ITERATIONS);
 
     printf("\nProgram total execution time     %lu cycles\n", intvl_prog/ITERATIONS);
