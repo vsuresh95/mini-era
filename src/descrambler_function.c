@@ -67,7 +67,7 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 		state = ((state << 1) & 0x7e) | feedback;
 	}
 
-	for(int i = 8; i < 17408; i+=8)
+	for(int i = 8; i < 240; i+=8)
 	{
 #if (VIT_SPANDEX_MODE == 2)
 		void* dst = (void*)((uint64_t) in+i);
@@ -103,7 +103,7 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 			: "t0", "t1", "memory"
 		);
 #endif
-		if (i < (psdusize*8)+16) {
+		{
 			value_8[0] = (value_64 >> 0) & 0xFF;
 			value_8[1] = (value_64 >> 8) & 0xFF;
 			value_8[2] = (value_64 >> 16) & 0xFF;

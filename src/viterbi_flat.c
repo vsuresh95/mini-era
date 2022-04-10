@@ -151,8 +151,8 @@ static void do_decoding_hw(struct vitdodec_access *desc)
 	iowrite32(vit_dev, VITDODEC_CBPS_REG, desc->cbps);
 	iowrite32(vit_dev, VITDODEC_NTRACEBACK_REG, desc->ntraceback);
 	iowrite32(vit_dev, VITDODEC_DATA_BITS_REG, desc->data_bits);
-	iowrite32(vit_dev, VITDODEC_IN_LENGTH_REG, 24852);
-	iowrite32(vit_dev, VITDODEC_OUT_LENGTH_REG, 18585);
+	iowrite32(vit_dev, VITDODEC_IN_LENGTH_REG, ENC_BYTES);
+	iowrite32(vit_dev, VITDODEC_OUT_LENGTH_REG, 240);
 	iowrite32(vit_dev, SRC_OFFSET_REG, 0x0);
 	iowrite32(vit_dev, DST_OFFSET_REG, 0x0);
 
