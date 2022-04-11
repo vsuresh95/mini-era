@@ -104,7 +104,7 @@ int ndev;
 
 int num_vit_msgs = 1;   // the number of messages to send this time step (1 is default) 
 
-volatile uint64_t checkpoint;
+volatile uint64_t* checkpoint = (volatile uint64_t*) 0xA8001000;
 
 message_t message;
 vehicle_state_t vehicle_state;
@@ -165,14 +165,14 @@ int main(int argc, char *argv[])
 
   #ifdef TWO_CORE_SCHED
   if (hartid == 1) {
-    old_val = amo_swap(&checkpoint, 0xcafebeed);
-    while(checkpoint != 1);
-    amo_add (&checkpoint, 1);
+    old_val = amo_swap(checkpoint, 0xcafebeed);
+    while(*checkpoint != 1);
+    amo_add (checkpoint, 1);
   } else {
-    while(checkpoint != 0xcafebeed);
-    old_val = amo_swap(&checkpoint, 1);
+    while(*checkpoint != 0xcafebeed);
+    old_val = amo_swap(checkpoint, 1);
   }
-  while(checkpoint != 2);
+  while(*checkpoint != 2);
   #endif
 
 #ifdef HW_FFT
@@ -203,8 +203,8 @@ int main(int argc, char *argv[])
 #endif // if HW_FFT
 
   #ifdef TWO_CORE_SCHED
-  amo_add (&checkpoint, 1);
-  while(checkpoint != 4);
+  amo_add (checkpoint, 1);
+  while(*checkpoint != 4);
   #endif
 
 #ifdef HW_VIT
@@ -224,8 +224,8 @@ int main(int argc, char *argv[])
 #endif // if HW_VIT
 
   #ifdef TWO_CORE_SCHED
-  amo_add (&checkpoint, 1);
-  while(checkpoint != 6);
+  amo_add (checkpoint, 1);
+  while(*checkpoint != 6);
   #endif
 
   //BM: Runs sometimes do not reset timesteps unless in main()
@@ -251,8 +251,8 @@ int main(int argc, char *argv[])
   }
 
   #ifdef TWO_CORE_SCHED
-  amo_add (&checkpoint, 1);
-  while(checkpoint != 8);
+  amo_add (checkpoint, 1);
+  while(*checkpoint != 8);
   #endif
 
   // initialize viterbi kernel - set up buffer
@@ -276,8 +276,8 @@ int main(int argc, char *argv[])
   }
 
   #ifdef TWO_CORE_SCHED
-  amo_add (&checkpoint, 1);
-  while(checkpoint != 10);
+  amo_add (checkpoint, 1);
+  while(*checkpoint != 10);
   #endif
 
   /* We assume the vehicle starts in the following state:
@@ -292,8 +292,8 @@ int main(int argc, char *argv[])
   printf("Starting the main loop...\n");
 
   #ifdef TWO_CORE_SCHED
-  amo_add (&checkpoint, 1);
-  while(checkpoint != 12);
+  amo_add (checkpoint, 1);
+  while(*checkpoint != 12);
   #endif
 
   // hardcoded for 'ITERATIONS' trace samples
@@ -311,10 +311,8 @@ int main(int argc, char *argv[])
       }
     }
 
-    checkpoint++;
-    asm volatile ("fence w, rw");
-    while(checkpoint != (14+4*i));
-    asm volatile ("fence r, rw");
+    amo_add (checkpoint, 1);
+    while(*checkpoint != (14+4*i));
     
     // printf("  fffff\n");
 
@@ -404,10 +402,8 @@ int main(int argc, char *argv[])
       // printf("  eeeee\n");
     }
 
-    checkpoint++;
-    asm volatile ("fence w, rw");
-    while(checkpoint != (16+4*i));
-    asm volatile ("fence r, rw");
+    amo_add (checkpoint, 1);
+    while(*checkpoint != (16+4*i));
 
     // printf("  ggggg\n");
 
