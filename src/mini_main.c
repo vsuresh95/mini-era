@@ -303,12 +303,16 @@ int main(int argc, char *argv[])
     if (hartid == 0)
     #endif
     {
-      start_prog = get_counter();
-
       if (!read_next_trace_record(vehicle_state))
       {
         break;
       }
+    }
+    #ifdef TWO_CORE_SCHED
+    else
+    #endif
+    {
+      start_prog = get_counter();
     }
 
     amo_add (checkpoint, 1);
@@ -412,7 +416,7 @@ int main(int argc, char *argv[])
      * vehicle state.
      */
     #ifdef TWO_CORE_SCHED
-    if (hartid == 0)
+    if (hartid == 1)
     #endif
     {
       MIN_DEBUG(printf("Time Step %3u : Calling Plan and Control with message %u and distance %d\n", time_step, message, (int) distance));
