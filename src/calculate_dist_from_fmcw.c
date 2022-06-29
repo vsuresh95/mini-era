@@ -145,6 +145,7 @@ static void fft_in_hw(struct fftHW_access *desc)
 	iowrite32(fft_dev, FFT_DO_PEAK_REG, 0);
 	iowrite32(fft_dev, FFT_DO_BITREV_REG, desc->do_bitrev);
 	iowrite32(fft_dev, FFT_LOG_LEN_REG, desc->log_len);
+	iowrite32(fft_dev, FFT_BATCH_SIZE_REG, 1);
 	iowrite32(fft_dev, SRC_OFFSET_REG, 0);
 	iowrite32(fft_dev, DST_OFFSET_REG, fftHW_in_size);
 

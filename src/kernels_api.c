@@ -344,7 +344,11 @@ status_t init_rad_kernel()
 
     // Pass common configuration parameters 
     iowrite32(fft_sense_dev, SELECT_REG, ioread32(fft_sense_dev, DEVID_REG));
+#if (FFT_SPANDEX_MODE == 1)
+    iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_RECALL);
+#else
     iowrite32(fft_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+#endif
 
     iowrite32(fft_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_fft);
     iowrite32(fft_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
@@ -548,7 +552,11 @@ status_t init_vit_kernel()
 
     // Pass common configuration parameters 
     iowrite32(vit_sense_dev, SELECT_REG, ioread32(vit_sense_dev, DEVID_REG));
+#if (VIT_SPANDEX_MODE == 1)
+    iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_RECALL);
+#else
     iowrite32(vit_sense_dev, COHERENCE_REG, ACC_COH_FULL);
+#endif
 
     iowrite32(vit_sense_dev, PT_ADDRESS_REG, (unsigned long) ptable_sense_vit);
     iowrite32(vit_sense_dev, PT_NCHUNK_REG, NCHUNK(sample_set_size));
