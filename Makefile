@@ -99,11 +99,12 @@ ifdef COMPILE_TO_ESP
  LDFLAGS += -lcontig
 endif
 
-SRC = 	src/calculate_dist_from_fmcw.c \
+#src/calc_fmcw_dist.c \
+
+SRC = 	src/kernels_api.c \
 	src/descrambler_function.c \
 	src/fft.c \
 	src/getopt.c \
-	src/kernels_api.c \
 	src/main.c \
 	src/octave.c \
 	src/timer.c \
@@ -258,10 +259,6 @@ obj_s:
 #depend:;	makedepend -fMakefile -- $(CFLAGS) -- $(SRC_D)
 # DO NOT DELETE THIS LINE -- make depend depends on it.
 
-src/read_trace.o: ./include/kernels_api.h ./include/verbose.h
-src/read_trace.o: ./include/base_types.h ./include/calc_fmcw_dist.h
-src/read_trace.o: ./include/utils.h
-src/read_trace.o: ./include/sim_environs.h
 src/getopt.o: ./include/getopt.h
 src/descrambler_function.o: ./include/base.h ./include/utils.h
 src/descrambler_function.o: ./include/viterbi_standalone.h
@@ -270,7 +267,8 @@ src/viterbi_flat.o: ./include/viterbi_flat.h ./include/verbose.h
 src/viterbi_flat.o: ./include/viterbi_standalone.h
 src/viterbi_flat.o: ./include/base_types.h
 src/sim_environs.o: ./include/kernels_api.h ./include/verbose.h
-src/sim_environs.o: ./include/base_types.h ./include/calc_fmcw_dist.h
+# src/sim_environs.o: ./include/base_types.h ./include/calc_fmcw_dist.h
+src/sim_environs.o: ./include/base_types.h 
 src/sim_environs.o: ./include/utils.h
 src/sim_environs.o: ./include/sim_environs.h
 src/cpu_vit_accel.o: ./include/base.h ./include/utils.h
@@ -281,16 +279,22 @@ src/viterbi_standalone.o: ./include/viterbi_flat.h
 src/viterbi_standalone.o: ./include/verbose.h
 src/main.o: ./include/getopt.h ./include/verbose.h
 src/main.o: ./include/base_types.h
-src/main.o: ./include/kernels_api.h ./include/calc_fmcw_dist.h
+# src/main.o: ./include/kernels_api.h ./include/calc_fmcw_dist.h
+src/main.o: ./include/kernels_api.h 
 src/main.o: ./include/utils.h ./include/sim_environs.h
-src/calculate_dist_from_fmcw.o: ./include/fft-1d.h
-src/calculate_dist_from_fmcw.o: ./include/calc_fmcw_dist.h
-src/calculate_dist_from_fmcw.o: ./include/base_types.h
+src/kernels_api.o: ./include/kernels_api.h ./include/coh_func.h
+src/kernels_api.o: ./include/verbose.h ./include/base_types.h
+# src/kernels_api.o: ./include/calc_fmcw_dist.h
+src/kernels_api.o: ./include/utils.h ./include/read_trace.h
+src/kernels_api.o: ./include/viterbi_flat.h ./include/base.h
+# src/calc_fmcw_dist.o: ./include/fft-1d.h
+# src/calc_fmcw_dist.o: ./include/calc_fmcw_dist.h
+# src/calc_fmcw_dist.o: ./include/base_types.h
 src/cpu_fft_accel.o: ./include/base_types.h ./include/fft-1d.h
 src/cpu_fft_accel.o: ./include/calc_fmcw_dist.h
 src/timer.o: ./include/timer.h
-src/kernels_api.o: ./include/kernels_api.h
-src/kernels_api.o: ./include/verbose.h ./include/base_types.h
-src/kernels_api.o: ./include/calc_fmcw_dist.h
-src/kernels_api.o: ./include/utils.h ./include/read_trace.h
-src/kernels_api.o: ./include/viterbi_flat.h ./include/base.h
+src/read_trace.o: ./include/kernels_api.h ./include/verbose.h
+# src/read_trace.o: ./include/base_types.h ./include/calc_fmcw_dist.h
+src/read_trace.o: ./include/base_types.h 
+src/read_trace.o: ./include/utils.h
+src/read_trace.o: ./include/sim_environs.h

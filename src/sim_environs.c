@@ -34,7 +34,7 @@ extern unsigned time_step;      // The number of elapsed time steps
 extern unsigned max_time_steps; // The max time steps to simulate (default to 5000)
 
 // This controls whether we can have multiple obstacles in a lane at a time
-bool_t   one_obstacle_per_lane = false; // false = unlimited
+bool  one_obstacle_per_lane = false; // false = unlimited
 
 // These are to output the Visualizer trace
 char vis_obj_ids[NUM_OBJECTS] = {'N', 'C', 'T', 'P', 'B'};
@@ -327,7 +327,7 @@ init_sim_environs(char* wdesc_fn, vehicle_state_t* vehicle_state)
  *  the objects must ALSO avoid one another (presumably by altering their speed)
  */
 
-bool_t
+bool
 iterate_sim_environs(vehicle_state_t vehicle_state) 
 {
   DEBUG(printf("In iterate_sim_environments on time_step %u of %u max\n", time_step, max_time_steps));

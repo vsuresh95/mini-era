@@ -20,6 +20,7 @@
 
 #include "verbose.h"
 
+#include "contig.h"
 #define TIME
 
 #include "base_types.h"
@@ -27,8 +28,36 @@
 typedef float distance_t;
 
 /* These are some top-level defines for the dictionaries */
+//BM
+#include "mini-era.h"
 
-#include "calc_fmcw_dist.h"
+// #include "calc_fmcw_dist.h"
+
+#define MAX_RADAR_N  (1<<14) // Max we allow is 16k samples
+unsigned RADAR_LOGN;  // Log2 of the number of samples
+unsigned RADAR_N;     // The number of samples (2^LOGN)
+float    RADAR_fs;    // Sampling Frequency
+float    RADAR_alpha; // Chirp rate (saw-tooth)
+
+/* Some function declarations */
+ void  init_calculate_peak_dist();
+ float calculate_peak_dist_from_fmcw(float* data);
+
+#ifdef INT_TIME
+ uint64_t calc_sec;
+ uint64_t calc_usec;
+ uint64_t fft_sec;
+ uint64_t fft_usec;
+ uint64_t fft_br_sec;
+ uint64_t fft_br_usec;
+ uint64_t fft_cvtin_sec;
+ uint64_t fft_cvtin_usec;
+ uint64_t fft_cvtout_sec;
+ uint64_t fft_cvtout_usec;
+ uint64_t cdfmcw_sec;
+ uint64_t cdfmcw_usec;
+#endif
+
 
 typedef struct {
   unsigned int index;          // A global index (of all radar dictionary entries
@@ -101,7 +130,7 @@ typedef enum {
 /* These are some global type defines, etc. */
 typedef struct
 {
-  bool_t active;
+  bool active;
   lane_t lane;
   float speed;
 } vehicle_state_t;
@@ -119,7 +148,7 @@ typedef enum {
 } message_t;
 
 
-extern bool_t   output_viz_trace;
+extern bool   output_viz_trace;
 
 extern unsigned fft_logn_samples;
 
@@ -151,8 +180,8 @@ extern unsigned int radar_log_nsamples_per_dict_set[MAX_RDICT_SAMPLE_SETS];
 
 /* Input Trace Functions */
 status_t init_trace_reader(char * tr_fn);
-bool_t eof_trace_reader(void);
-bool_t read_next_trace_record(vehicle_state_t vs);
+bool eof_trace_reader(void);
+bool read_next_trace_record(vehicle_state_t vs);
 void closeout_trace_reader(void);
 
 /* Kernels initialization */
@@ -181,5 +210,28 @@ vehicle_state_t plan_and_control(label_t, distance_t, message_t, vehicle_state_t
 void closeout_cv_kernel(void);
 void closeout_rad_kernel(void);
 void closeout_vit_kernel(void);
+
+//ASI functions 
+// #if defined(HW_FFT) || defined(HW_VIT)
+// inline void write_mem (void* dst, int64_t value_64);
+// inline int64_t read_mem (void* dst);
+// #endif
+
+// #ifdef HW_FFT
+// inline uint32_t poll_fft_cons_rdy();
+// inline uint32_t poll_fft_prod_valid();
+// inline void update_fft_cons_valid();
+// inline void update_fft_cons_rdy();
+// inline void update_fft_prod_rdy();
+// inline void update_fft_prod_valid();
+// inline void reset_sync();
+// void update_fft_end();
+// #endif
+// /* Write to the memory*/
+// static inline void write_mem (void* dst, int64_t value_64);
+
+// /* Read from the memory*/
+// static inline int64_t read_mem (void* dst);
+
 
 #endif

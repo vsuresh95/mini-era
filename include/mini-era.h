@@ -11,9 +11,15 @@
 #define __user
 #endif
 #endif /* __KERNEL__ */
-
+#define ASI_TIME
+// #include <libesp.h>
 #include <esp.h>
 #include <esp_accelerator.h>
+
+#define ENC_BYTES 17408
+
+#include "coh_func.h"
+
 
 struct vitdodec_access {
 	struct esp_access esp;
@@ -21,8 +27,17 @@ struct vitdodec_access {
 	unsigned cbps;
 	unsigned ntraceback;
 	unsigned data_bits;
-	unsigned src_offset;
-	unsigned dst_offset;
+	// unsigned src_offset;
+	// unsigned dst_offset;
+	unsigned in_length;
+	unsigned out_length;
+    unsigned input_start_offset 	;
+    unsigned output_start_offset 	;
+    unsigned accel_cons_vld_offset ;
+    unsigned accel_prod_rdy_offset ;
+    unsigned accel_cons_rdy_offset ;
+    unsigned accel_prod_vld_offset ;
+	unsigned spandex_reg;
 };
 
 #define VITDODEC_IOC_ACCESS	_IOW ('S', 0, struct vitdodec_access)
@@ -70,7 +85,8 @@ struct fftHW_access {
 
 #elif (USE_FFT_ACCEL_TYPE == 2) // fft2_stratus
 
-#define LOGN_SAMPLES 6
+// #define LOGN_SAMPLES 6
+#define LOGN_SAMPLES 14
 #define NUM_FFTS     1
 #define DO_INVERSE   0
 #define DO_SHIFT     1
@@ -78,19 +94,33 @@ struct fftHW_access {
 
 #define NACC 1
 
+// struct fftHW_access {
+// 	struct esp_access esp;
+// 	/* <<--regs-->> */
+// 	unsigned scale_factor;
+// 	unsigned do_inverse;
+// 	unsigned logn_samples;
+// 	unsigned do_shift;
+// 	unsigned num_ffts;
+// 	unsigned src_offset;
+// 	unsigned dst_offset;
+// 	unsigned spandex_reg;
+// };
+
+
 struct fftHW_access {
 	struct esp_access esp;
 	/* <<--regs-->> */
-	unsigned scale_factor;
 	unsigned do_inverse;
 	unsigned logn_samples;
 	unsigned do_shift;
-	unsigned num_ffts;
 	unsigned src_offset;
 	unsigned dst_offset;
+    unsigned spandex_reg;
 };
 #endif
 
 #define FFTHW_IOC_ACCESS	_IOW ('S', 0, struct fftHW_access)
+
 
 #endif /* _MINI_ERA_H_ */

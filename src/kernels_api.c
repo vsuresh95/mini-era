@@ -20,7 +20,9 @@
 #endif
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef TIME
 #include <sys/time.h>
+#endif
 #include <math.h>
 
 static unsigned DMA_WORD_PER_BEAT(unsigned _st)
@@ -37,23 +39,40 @@ static unsigned DMA_WORD_PER_BEAT(unsigned _st)
  #include <string.h>
  #include <unistd.h>
 
- #include "contig.h"
 
  // These are includes to support ESP FFT Accelerator
  //#include "libesp.h"
  // #include "fft_esp_cfg.h"
 
  #include "mini-era.h"
+#include "fft-1d.h"
 
 #endif
 
 #include "kernels_api.h"
+
+// #include "coh_func.h"
 
 #ifdef USE_SIM_ENVIRON
  #include "sim_environs.h"
 #else
  #include "read_trace.h"
 #endif
+#define SYNC_VAR_SIZE 10
+#define UPDATE_VAR_SIZE 2
+#define VALID_FLAG_OFFSET 0
+#define END_FLAG_OFFSET 2
+#define READY_FLAG_OFFSET 4
+#define FLT_VALID_FLAG_OFFSET 6
+#define FLT_READY_FLAG_OFFSET 8
+#define VIT_SYNC_VAR_SIZE 40
+#define VIT_UPDATE_VAR_SIZE 8
+#define VIT_VALID_FLAG_OFFSET 0
+#define VIT_READY_FLAG_OFFSET 16
+// #define FLT_VALID_FLAG_OFFSET 6
+// #define FLT_READY_FLAG_OFFSET 8
+
+#define ENC_BYTES 17408
 
 extern unsigned time_step;
 
@@ -65,11 +84,11 @@ char* object_names[NUM_OBJECTS] = {"Nothing", "Car", "Truck", "Person", "Bike" }
 
 
 #ifdef VERBOSE
-bool_t output_viz_trace = true;
+bool output_viz_trace = true;
 #else
-bool_t output_viz_trace = false;
+bool output_viz_trace = false;
 #endif
-unsigned fft_logn_samples = 14; // Defaults to 16k samples
+//unsigned fft_logn_samples = 14; // Defaults to 16k samples
 
 unsigned total_obj; // Total non-'N' obstacle objects across all lanes this time step
 unsigned obj_in_lane[NUM_LANES]; // Number of obstacle objects in each lane this time step (at least one, 'n')
@@ -88,6 +107,65 @@ float IMPACT_DISTANCE = 50.0; // Minimum distance at which an obstacle "impacts"
 
 /* These are types, functions, etc. required for VITERBI */
 #include "viterbi_flat.h"
+
+
+
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
+
+
+#if defined(HW_FFT) || defined(HW_VIT) 
+inline void write_mem (void* dst, int64_t value_64)
+{
+	__asm__ volatile (
+		"mv t0, %0;"
+		"mv t1, %1;"
+		".word " QU(WRITE_CODE)
+		:
+		: "r" (dst), "r" (value_64)
+		: "t0", "t1", "memory"
+	);
+}
+
+/* Read from the memory*/
+inline int64_t read_mem (void* dst)
+{
+	int64_t value_64;
+
+	__asm__ volatile (
+		"mv t0, %1;"
+		".word " QU(READ_CODE) ";"
+		"mv %0, t1"
+		: "=r" (value_64)
+		: "r" (dst)
+		: "t0", "t1", "memory"
+	);
+
+	return value_64;
+}
+
+#endif
 
 
 
@@ -115,6 +193,58 @@ uint64_t parse_sec  = 0LL;
 uint64_t parse_usec = 0LL;
 #endif
 
+// esp_thread_info_t cfg_000[] = {
+// 	{
+// 		.run = true,
+// 		.devname = "audio_fft_stratus.0",
+// 		.ioctl_req = FFTHW_IOC_ACCESS,
+// 		// .esp_desc = &(tiled_app_cfg_000[0].esp),
+// 	}
+// };
+
+
+//COH
+
+#ifdef ESP
+// ESP COHERENCE PROTOCOLS
+spandex_config_t spandex_config;
+#if (COH_MODE == 3)
+unsigned coherence = ACC_COH_NONE;
+const char print_coh[] = "Non-Coherent DMA";
+#elif (COH_MODE == 2)
+unsigned coherence = ACC_COH_LLC;
+const char print_coh[] = "LLC-Coherent DMA";
+#elif (COH_MODE == 1)
+unsigned coherence = ACC_COH_RECALL;
+const char print_coh[] = "Coherent DMA";
+#else
+unsigned coherence = ACC_COH_FULL;
+const char print_coh[] = "Baseline MESI";
+#endif
+
+#else
+//SPANDEX COHERENCE PROTOCOLS
+unsigned coherence = ACC_COH_FULL;
+#if (COH_MODE == 3)
+// Owner Prediction
+spandex_config_t spandex_config = {.spandex_reg = 0, .r_en = 1, .r_type = 2, .w_en = 1, .w_op = 1, .w_type = 1};
+const char print_coh[] = "Owner Prediction";
+#elif (COH_MODE == 2)
+// Write-through forwarding
+spandex_config_t spandex_config = {.spandex_reg = 0, .r_en = 1, .r_type = 2, .w_en = 1, .w_type = 1};
+const char print_coh[] = "Write-through forwarding";
+#elif (COH_MODE == 1)
+// Baseline Spandex
+spandex_config_t spandex_config = {.spandex_reg = 0, .r_en = 1, .r_type = 1};
+const char print_coh[] = "Baseline Spandex (ReqV)";
+#else
+// Fully Coherent MESI
+spandex_config_t spandex_config= {.spandex_reg = 0};
+const char print_coh[] = "Baseline Spandex";
+#endif
+#endif
+
+//END COH
 
 /* These are some top-level defines needed for CV kernel */
 unsigned label_match[NUM_OBJECTS+1] = {0, 0, 0, 0, 0, 0};  // Times CNN matched dictionary
@@ -188,24 +318,68 @@ size_t vitHW_out_size;
 size_t vitHW_out_offset;
 size_t vitHW_size;
 
+//BM
+// unsigned vit_input_start_offset 	;
+// unsigned vit_output_start_offset 	;
+// unsigned vit_cons_vld_offset ;
+// unsigned vit_prod_rdy_offset ;
+// unsigned vit_cons_rdy_offset ;
+// unsigned vit_prod_vld_offset ;
+unsigned VitProdRdyFlag;
+unsigned VitProdVldFlag;
+unsigned VitConsRdyFlag;
+unsigned VitConsVldFlag;
+
+unsigned  VitEndFlag;
 struct vitdodec_access vitHW_desc;
+
+
+
+
+void reset_vit_sync(){
+	int n;
+		write_mem(((void*)(vitHW_lmem + VitConsVldFlag)), 0);
+		write_mem(((void*)(vitHW_lmem + VitConsRdyFlag)), 1);
+		write_mem(((void*)(vitHW_lmem + VitProdRdyFlag)), 1);
+		write_mem(((void*)(vitHW_lmem + VitProdVldFlag)), 0); 
+		// vitHW_lmem[VitConsVldFlag] = 0;
+		// vitHW_lmem[VitConsRdyFlag] = 1;
+		// vitHW_lmem[VitProdRdyFlag] = 1;
+		// vitHW_lmem[VitProdVldFlag] = 0; 
+    // printf("vitHW_lmem[VitConsVldFlag(%x)] = %d\nvitHW_lmem[VitConsRdyFlag(%x)] = %d\nvitHW_lmem[VitProdRdyFlag(%x)] =%d\nvitHW_lmem[VitProdVldFlag(%x)] = %d\n", VitConsVldFlag,vitHW_lmem[VitConsVldFlag],
+    // VitConsRdyFlag, vitHW_lmem[VitConsRdyFlag], VitProdRdyFlag, vitHW_lmem[VitProdRdyFlag], VitProdVldFlag, vitHW_lmem[VitProdVldFlag]);
+
+	__asm__ volatile ("fence w, w");	
+}
+
+
+
+
+
 
 static void init_vit_parameters()
 {
 	//printf("Doing init_vit_parameters\n");
 	if (DMA_WORD_PER_BEAT(sizeof(vitHW_token_t)) == 0) {
-		vitHW_in_words_adj  = 24852;
+		vitHW_in_words_adj  = 24852; //24852
 		vitHW_out_words_adj = 18585;
 	} else {
-		vitHW_in_words_adj  = round_up(24852, DMA_WORD_PER_BEAT(sizeof(vitHW_token_t)));
+		vitHW_in_words_adj  = round_up(24852, DMA_WORD_PER_BEAT(sizeof(vitHW_token_t)));//24852
 		vitHW_out_words_adj = round_up(18585, DMA_WORD_PER_BEAT(sizeof(vitHW_token_t)));
 	}
 	vitHW_in_len = vitHW_in_words_adj;
 	vitHW_out_len =  vitHW_out_words_adj;
 	vitHW_in_size = vitHW_in_len * sizeof(vitHW_token_t);
 	vitHW_out_size = vitHW_out_len * sizeof(vitHW_token_t);
-	vitHW_out_offset = vitHW_in_len;
-	vitHW_size = (vitHW_out_offset * sizeof(vitHW_token_t)) + vitHW_out_size;
+	vitHW_out_offset = vitHW_in_len + 2*VIT_SYNC_VAR_SIZE ;
+	vitHW_size = (vitHW_out_offset * sizeof(vitHW_token_t)) + vitHW_out_size; 
+  //  + 2*VIT_SYNC_VAR_SIZE
+
+	VitProdRdyFlag = VIT_SYNC_VAR_SIZE + vitHW_in_words_adj + VIT_READY_FLAG_OFFSET;
+	VitProdVldFlag = VIT_SYNC_VAR_SIZE + vitHW_in_words_adj + VIT_VALID_FLAG_OFFSET;
+  VitEndFlag = VitProdVldFlag + VIT_UPDATE_VAR_SIZE;
+	VitConsRdyFlag =  VIT_READY_FLAG_OFFSET;
+	VitConsVldFlag =  VIT_VALID_FLAG_OFFSET;
 }
 
 #endif
@@ -214,6 +388,8 @@ static void init_vit_parameters()
 #ifdef HW_FFT
 
 char FFT_DEVNAME[128];
+
+
 
 int fftHW_fd;
 contig_handle_t fftHW_mem;
@@ -229,6 +405,15 @@ size_t fftHW_in_size;
 size_t fftHW_out_size;
 size_t fftHW_out_offset;
 size_t fftHW_size;
+size_t  acc_len;
+size_t  ConsRdyFlag;
+size_t	ConsVldFlag;
+size_t  EndFlag;
+size_t	ProdRdyFlag;
+size_t	ProdVldFlag;
+size_t	DMARdyFlag ;
+size_t	DMAVldFlag ;
+
 
 struct fftHW_access fftHW_desc;
 
@@ -237,7 +422,9 @@ const float FFT_ERR_TH = 0.05;
 /* User-defined code */
 static void init_fft_parameters()
 {
-	int len = 0x1<<14;
+	// int len = 0x1<<14;
+	// int len = 0x1<<LOGN_SAMPLES;
+  int len = 0x1<<fft_logn_samples;
 	if (DMA_WORD_PER_BEAT(sizeof(fftHW_token_t)) == 0) {
 		fftHW_in_words_adj  = 2 * len;
 		fftHW_out_words_adj = 2 * len;
@@ -249,10 +436,127 @@ static void init_fft_parameters()
 	fftHW_out_len =  fftHW_out_words_adj;
 	fftHW_in_size = fftHW_in_len * sizeof(fftHW_token_t);
 	fftHW_out_size = fftHW_out_len * sizeof(fftHW_token_t);
-	fftHW_out_offset = 0;
+	//fftHW_out_offset = 0;
+	// fftHW_size = (fftHW_out_offset * sizeof(fftHW_token_t)) + fftHW_out_size;
+
+  // uint64_t num_samples = 1 << LOGN_SAMPLES; //131072 //275
+  // acc_len = SYNC_VAR_SIZE + 2*len;
+  acc_len = SYNC_VAR_SIZE + fftHW_in_len;
+	// fftHW_size = 2*acc_len;
+  fftHW_out_offset = SYNC_VAR_SIZE + acc_len;
 	fftHW_size = (fftHW_out_offset * sizeof(fftHW_token_t)) + fftHW_out_size;
+
+
+  ConsRdyFlag = 0*acc_len + READY_FLAG_OFFSET;
+	ConsVldFlag = 0*acc_len + VALID_FLAG_OFFSET;
+  EndFlag     = acc_len + END_FLAG_OFFSET;
+	ProdRdyFlag = 1*acc_len + READY_FLAG_OFFSET;
+	ProdVldFlag = 1*acc_len + VALID_FLAG_OFFSET;
+  #ifdef VERBOSE
+  printf("ConsRdyFlag = %d\n",ConsRdyFlag );
+  printf("ConsVldFlag = %d\n",ConsVldFlag );
+  printf("EndFlag     = %d\n",EndFlag     );
+  printf("ProdRdyFlag = %d\n",ProdRdyFlag );
+  printf("ProdVldFlag = %d\n",ProdVldFlag );
+  #endif
+	DMARdyFlag = 8*acc_len + READY_FLAG_OFFSET;
+	DMAVldFlag = 8*acc_len + VALID_FLAG_OFFSET;
 }
 #endif
+
+
+
+
+#ifdef HW_FFT
+inline void reset_sync(){
+	int n;
+		write_mem(((void*)(fftHW_lmem + ConsVldFlag)), 0);
+		write_mem(((void*)(fftHW_lmem + ConsRdyFlag)), 1);
+		write_mem(((void*)(fftHW_lmem + ProdRdyFlag)), 1);
+		write_mem(((void*)(fftHW_lmem + ProdVldFlag)), 0); 
+	__asm__ volatile ("fence w, w");	
+}
+
+
+
+inline uint32_t poll_fft_cons_rdy(){
+	int64_t value_64 = 0;
+	void* dst = (void*)(fftHW_lmem + (ConsRdyFlag));
+	value_64 = read_mem(dst);
+	return (value_64 == 1);
+}
+
+inline uint32_t poll_fft_prod_valid(){
+	void* dst = (void*)(fftHW_lmem+(ProdVldFlag));
+	int64_t value_64 = 0;
+	value_64 = read_mem(dst);
+	return (value_64 == 1);
+}
+
+
+inline void update_fft_cons_valid(){
+	// #ifndef ESP
+	// __asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+	// void* dst = (void*)(buf+(*cpu_cons_valid_offset)+1);
+	// write_mem(dst, last);
+
+	// #ifdef ESP
+	__asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+
+	void* dst = (void*)(fftHW_lmem+(ConsVldFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+
+
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+
+void update_fft_end(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem+(EndFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_fft_cons_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem+(ConsRdyFlag));
+	int64_t value_64 = 0;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_fft_prod_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem+(ProdRdyFlag));
+	int64_t value_64 = 1; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_fft_prod_valid(){
+	__asm__ volatile ("fence w, w");	//release semantics
+	void* dst = (void*)(fftHW_lmem+(ProdVldFlag));
+	int64_t value_64 = 0; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	//acquire semantics
+}
+#endif
+
 
 extern void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg);
 
@@ -315,7 +619,7 @@ status_t init_rad_kernel(char* dict_fn)
 	exit(-2);
       }
 	
-      printf("  Reading rad dictionary set %u entry %u : %u %u %f\n", si, di, entry_id, entry_log_nsamples, entry_dist);
+      DEBUG(printf("  Reading rad dictionary set %u entry %u : %u %u %f\n", si, di, entry_id, entry_log_nsamples, entry_dist));
       the_radar_return_dict[si][di].index = tot_index++;  // Set, and increment total index
       the_radar_return_dict[si][di].set = si;
       the_radar_return_dict[si][di].index_in_set = di;
@@ -373,21 +677,21 @@ status_t init_rad_kernel(char* dict_fn)
  #if (USE_FFT_ACCEL_TYPE == 1)
   snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
  #elif (USE_FFT_ACCEL_TYPE == 2)
-  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
- #endif
+  snprintf(FFT_DEVNAME, 128, "/dev/audio_fft_stratus.%u", use_device_number);
+ #endif /* USE_FFT_ACCEL_TYPE */
   printf("Open device %s\n", FFT_DEVNAME);
   #if (USE_FFT_FX == 64)
-   printf(" typedef unsigned long long token_t\n");
-   printf(" typedef double native_t\n");
-   printf(" #define fx2float fixed64_to_double\n");
-   printf(" #define float2fx double_to_fixed64\n");
+   DEBUG(printf(" typedef unsigned long long token_t\n"));
+   DEBUG(printf(" typedef double native_t\n"));
+   DEBUG(printf(" #define fx2float fixed64_to_double\n"));
+   DEBUG(printf(" #define float2fx double_to_fixed64\n"));
   #elif (USE_FFT_FX == 32)
-   printf(" typedef int token_t\n");
-   printf(" typedef float native_t\n");
-   printf(" #define fx2float fixed32_to_float\n");
-   printf(" #define float2fx float_to_fixed32\n");
+   DEBUG(printf(" typedef int token_t\n"));
+   DEBUG(printf(" typedef float native_t\n"));
+   DEBUG(printf(" #define fx2float fixed32_to_float\n"));
+   DEBUG(printf(" #define float2fx float_to_fixed32\n"));
   #endif /* FFT_FX_WIDTH */
-  printf(" #define FX_IL %u\n", FX_IL);
+  DEBUG(printf(" #define FX_IL %u\n", FX_IL));
 
   fftHW_fd = open(FFT_DEVNAME, O_RDWR, 0);
   if (fftHW_fd < 0) {
@@ -395,22 +699,28 @@ status_t init_rad_kernel(char* dict_fn)
     exit(EXIT_FAILURE);
   }
 
-  printf("Allocate hardware buffer of size %zu\n", fftHW_size);
+  DEBUG(printf("Allocate hardware buffer of size %zu\n", fftHW_size));
   fftHW_lmem = contig_alloc(fftHW_size, &fftHW_mem);
   if (fftHW_lmem == NULL) {
     fprintf(stderr, "Error: cannot allocate %zu contig bytes", fftHW_size);
     exit(EXIT_FAILURE);
   }
 
-  fftHW_li_mem = &(fftHW_lmem[0]);
+  fftHW_li_mem = &(fftHW_lmem[SYNC_VAR_SIZE]);
   fftHW_lo_mem = &(fftHW_lmem[fftHW_out_offset]);
-  printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem);
+  DEBUG(printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem));
 
   fftHW_desc.esp.run = true;
-  fftHW_desc.esp.coherence = ACC_COH_NONE;
+  //BM
+  // fftHW_desc.esp.coherence = ACC_COH_NONE;
+  fftHW_desc.esp.coherence = ACC_COH_FULL; //coherence;
   fftHW_desc.esp.p2p_store = 0;
   fftHW_desc.esp.p2p_nsrcs = 0;
   //fftHW_desc.esp.p2p_srcs = {"", "", "", ""};
+  //BM
+  fftHW_desc.spandex_reg = spandex_config.spandex_reg;
+  fftHW_desc.esp.start_stop = 1;
+
   fftHW_desc.esp.contig = contig_to_khandle(fftHW_mem);
 
  #if (USE_FFT_ACCEL_TYPE == 1) // fft_stratus
@@ -418,22 +728,40 @@ status_t init_rad_kernel(char* dict_fn)
   fftHW_desc.do_bitrev  = FFTHW_DO_BITREV;
   #else
   fftHW_desc.do_bitrev  = FFTHW_NO_BITREV;
-  #endif
+  #endif /* BITREV */
   //fftHW_desc.len      = fftHW_len;
   fftHW_desc.log_len    = fft_logn_samples; // fftHW_log_len;
  #elif (USE_FFT_ACCEL_TYPE == 2) // fft2_stratus
-  fftHW_desc.scale_factor = 0;
+  // fftHW_desc.scale_factor = 0; //BM
   fftHW_desc.logn_samples = fft_logn_samples;
-  fftHW_desc.num_ffts     = 1;
+  // fftHW_desc.num_ffts     = 1; //BM
   fftHW_desc.do_inverse   = 0;
   fftHW_desc.do_shift     = 0;
-  fftHW_desc.do_inverse   = 0;
- #endif
-  fftHW_desc.src_offset = 0;
-  fftHW_desc.dst_offset = 0;
-#endif
+  // fftHW_desc.do_inverse   = 0;
+ #endif /* ACCEL_TYPE*/
+  // fftHW_desc.src_offset = 0;
+  // fftHW_desc.dst_offset = 0;
+// #endif
 
+  //BM
+  reset_sync();
+
+// cfg_000.run = true;
+// cfg_000.devname = "audio_fft_stratus.0",
+// cfg_000.ioctl_req = FFTHW_IOC_ACCESS,
+// cfg_000[0].esp_desc = &(fftHW_desc.esp),
+// cfg_000[0].hw_buf = fftHW_lmem;
+
+// esp_run(cfg_000+0, NACC);
+  //BM : start app
+  // #ifdef HW_FFT
+  // printf("Using IOCTL and not esp_run\n");
+  if (ioctl(fftHW_fd, FFTHW_IOC_ACCESS, fftHW_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
   return success;
+  #endif /* FFT IN HW*/
 }
 
 
@@ -476,10 +804,11 @@ status_t init_vit_kernel(char* dict_fn)
     return error;
   }
 
+ int in_cbps;
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
   {
-    printf("  Reading vit dictionary entry %u\n", i);
+    DEBUG(printf("  Reading vit dictionary entry %u\n", i));
 
     int mnum, mid;
     if (fscanf(dictF, "%d %d\n", &mnum, &mid) != 2) {
@@ -496,7 +825,7 @@ status_t init_vit_kernel(char* dict_fn)
     the_viterbi_trace_dict[i].msg_num = mnum;
     the_viterbi_trace_dict[i].msg_id = mid;
 
-    int in_bpsc, in_cbps, in_dbps, in_encoding, in_rate; // OFDM PARMS
+    int in_bpsc, in_dbps, in_encoding, in_rate; // OFDM PARMS
     if (fscanf(dictF, "%d %d %d %d %d\n", &in_bpsc, &in_cbps, &in_dbps, &in_encoding, &in_rate) != 5) {
       printf("Error reading viterbi kernel dictionary entry %u bpsc, cbps, dbps, encoding and rate info\n", i);
       fclose(dictF);
@@ -528,9 +857,9 @@ status_t init_vit_kernel(char* dict_fn)
     for (int ci = 0; ci < num_in_bits; ci++) { 
       unsigned c;
       if (fscanf(dictF, "%u ", &c) != 1) {
-	printf("Error reading viterbi kernel dictionary entry %u data\n", i);
-	fclose(dictF);
-	exit(-6);
+        printf("Error reading viterbi kernel dictionary entry %u data\n", i);
+        fclose(dictF);
+        exit(-6);
       }
       #ifdef SUPER_VERBOSE
       printf("%u ", c);
@@ -555,7 +884,7 @@ status_t init_vit_kernel(char* dict_fn)
 #ifdef HW_VIT
   init_vit_parameters();
   snprintf(VIT_DEVNAME, 128, "/dev/vitdodec_stratus.%u", use_device_number);
-  printf("Open Vit-Do-Decode device %s\n", VIT_DEVNAME);
+  DEBUG(printf("Open Vit-Do-Decode device %s\n", VIT_DEVNAME));
   vitHW_fd = open(VIT_DEVNAME, O_RDWR, 0);
   if(vitHW_fd < 0) {
 	  fprintf(stderr, "Error: cannot open %s", VIT_DEVNAME);
@@ -567,15 +896,52 @@ status_t init_vit_kernel(char* dict_fn)
     fprintf(stderr, "Error: cannot allocate %zu contig bytes", vitHW_size);
     exit(EXIT_FAILURE);
   }
-  vitHW_li_mem = &(vitHW_lmem[0]);
-  vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
-  printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
+  // vitHW_li_mem = &(vitHW_lmem[0]);
+  // vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
+  vitHW_li_mem = &(vitHW_lmem[VIT_SYNC_VAR_SIZE]);
+  vitHW_lo_mem = &(vitHW_lmem[ vitHW_out_offset]);
+  DEBUG(printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem));
 
+  // printf("Reset Sync 1\n");
+  // reset_vit_sync();
   vitHW_desc.esp.run = true;
-  vitHW_desc.esp.coherence = ACC_COH_NONE;
+  
+  //BM
+  // vitHW_desc.esp.coherence = ACC_COH_NONE;
+  vitHW_desc.cbps = in_cbps;
+  vitHW_desc.ntraceback = 5; //d_ntraceback;
+  vitHW_desc.data_bits = 288; //24852;
+  //BM
+  vitHW_desc.in_length = 24852; //ENC_BYTES;
+  vitHW_desc.out_length = 18585; //240;
+
+  vitHW_desc.input_start_offset = VIT_SYNC_VAR_SIZE	;
+  vitHW_desc.output_start_offset =  vitHW_out_offset	;//2*VIT_SYNC_VAR_SIZE +
+  // vitHW_desc.accel_cons_vld_offset = VitConsVldFlag ;
+  // vitHW_desc.accel_prod_rdy_offset = VitProdRdyFlag;
+  // vitHW_desc.accel_cons_rdy_offset = VitConsRdyFlag;
+  // vitHW_desc.accel_prod_vld_offset = VitProdVldFlag;
+  vitHW_desc.accel_cons_vld_offset = VitProdVldFlag ;
+  vitHW_desc.accel_prod_rdy_offset = VitConsRdyFlag;
+  vitHW_desc.accel_cons_rdy_offset = VitProdRdyFlag;
+  vitHW_desc.accel_prod_vld_offset = VitConsVldFlag;
+
+  vitHW_desc.esp.coherence = ACC_COH_FULL;// coherence;//coherence;
+  vitHW_desc.spandex_reg = spandex_config.spandex_reg;
+  vitHW_desc.esp.start_stop = 1; //TODO: BM
+
   vitHW_desc.esp.p2p_store = 0;
   vitHW_desc.esp.p2p_nsrcs = 0;
   vitHW_desc.esp.contig = contig_to_khandle(vitHW_mem);
+
+  DEBUG(printf("Reset Sync\n"));
+  reset_vit_sync();
+
+  DEBUG(printf("ioctl call to vitdodec to initialize accel\n"));
+  if (ioctl(vitHW_fd, VITDODEC_IOC_ACCESS, vitHW_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
 
 #endif
 
@@ -601,6 +967,8 @@ status_t init_cv_kernel(char* py_file, char* dict_cv)
     snprintf(the_cv_image_dict[pedestrian][i], 128, "%s/person_%02u.jpg", dict_cv, i);
     snprintf(the_cv_image_dict[truck][i], 128, "%s/truck_%02u.jpg", dict_cv, i);
   }
+
+  #ifdef SUPER_VERBOSE
   for (int i = 0; i < num_label_t; i++) {
     int j = 0;
     printf("the_cv_image_dict[%2u][%2u] = %s\n", i, j, the_cv_image_dict[i][j]);
@@ -608,6 +976,7 @@ status_t init_cv_kernel(char* py_file, char* dict_cv)
       printf("the_cv_image_dict[%2u][%2u] = %s\n", i, j, the_cv_image_dict[i][j]);
     });
   }
+  #endif
 
   // Initialization to run Keras CNN code 
 #ifndef BYPASS_KERAS_CV_CODE
@@ -750,7 +1119,7 @@ label_t iterate_cv_kernel(vehicle_state_t vs)
 
 unsigned image_index = 0;
 
-static inline label_t parse_output_dimg() {
+inline label_t parse_output_dimg() {
   FILE *file_p = fopen("./output.dimg", "r");
   const size_t n_classes = 5;
   float probs[n_classes];
@@ -878,13 +1247,13 @@ void post_execute_rad_kernel(unsigned set, unsigned index, distance_t tr_dist, d
   } else if (pct_err < 0.01) {
     hist_pct_errs[set][index][1]++;
   } else if (pct_err < 0.1) {
-    printf("RADAR_LT010_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    DEBUG(printf("RADAR_LT010_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err));
     hist_pct_errs[set][index][2]++;
   } else if (pct_err < 1.00) {
-    printf("RADAR_LT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    DEBUG(printf("RADAR_LT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err));
     hist_pct_errs[set][index][3]++;
   } else {
-    printf("RADAR_GT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    DEBUG(printf("RADAR_GT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err));
     hist_pct_errs[set][index][4]++;
   }
 }
@@ -978,6 +1347,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
 message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
 {
   // Send each message (here they are all the same) through the viterbi decoder
+  DEBUG(printf("Begin: execute_vit_kernel\n"));
   message_t msg = num_message_t;
   uint8_t *result;
   char     msg_text[1600]; // Big enough to hold largest message (1500?)
@@ -1042,7 +1412,7 @@ vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t m
        #endif
        )) {
     if (distance <= IMPACT_DISTANCE) {
-      printf("WHOOPS: We've suffered a collision on time_step %u!\n", time_step);
+      DEBUG(printf("WHOOPS: We've suffered a collision on time_step %u!\n", time_step));
       //fprintf(stderr, "WHOOPS: We've suffered a collision on time_step %u!\n", time_step);
       new_vehicle_state.speed = 0.0;
       new_vehicle_state.active = false; // We should add visualizer stuff for this!
@@ -1085,7 +1455,7 @@ vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t m
 	#endif
 	break; /* Stop!!! */
     default:
-      printf(" ERROR  In %s with UNDEFINED MESSAGE: %u\n", lane_names[vehicle_state.lane], message);
+      DEBUG(printf(" ERROR  In %s with UNDEFINED MESSAGE: %u\n", lane_names[vehicle_state.lane], message));
       //exit(-6);
     }
   } else {
@@ -1240,4 +1610,307 @@ void closeout_vit_kernel()
 
 }
 
+
+
+
+#ifdef INT_TIME
+struct timeval calc_start, calc_stop;
+uint64_t calc_sec  = 0LL;
+uint64_t calc_usec = 0LL;
+uint64_t calc_cycles = 0LL;
+
+struct timeval fft_stop, fft_start;
+uint64_t fft_sec  = 0LL;
+uint64_t fft_usec = 0LL;
+uint64_t fft_cycles = 0LL;
+
+struct timeval fft_br_stop, fft_br_start;
+uint64_t fft_br_sec  = 0LL;
+uint64_t fft_br_usec = 0LL;
+uint64_t fft_br_cycles = 0LL;
+
+struct timeval fft_cvtin_stop, fft_cvtin_start;
+uint64_t fft_cvtin_sec  = 0LL;
+uint64_t fft_cvtin_usec = 0LL;
+uint64_t fft_cvtin_cycles = 0LL;
+
+struct timeval fft_cvtout_stop, fft_cvtout_start;
+uint64_t fft_cvtout_sec  = 0LL;
+uint64_t fft_cvtout_usec = 0LL;
+uint64_t fft_cvtout_cycles = 0LL;
+
+struct timeval cdfmcw_stop, cdfmcw_start;
+uint64_t cdfmcw_sec  = 0LL;
+uint64_t cdfmcw_usec = 0LL;
+uint64_t cdfmcw_cycles = 0LL;
+#endif
+
+unsigned RADAR_LOGN    = 0;   // Log2 of the number of samples
+unsigned RADAR_N       = 0;   // The number of samples (2^LOGN)
+float    RADAR_fs      = 0.0; // Sampling Frequency
+float    RADAR_alpha   = 0.0; // Chirp rate (saw-tooth)
+// CONSTANTS
+#define RADAR_c          300000000.0  // Speed of Light in Meters/Sec
+#define RADAR_threshold -100;
+
+//float   RADAR_psd_threshold = 1e-10*pow(8192,2);  // ~= 0.006711 and 450 ~= 0.163635 in 16K
+float   RADAR_psd_threshold = 0.0067108864;
+
+void init_calculate_peak_dist(unsigned fft_logn_samples)
+{
+  switch (fft_logn_samples) {
+  case 10:
+    RADAR_LOGN  = 10;
+    RADAR_fs    = 204800.0;
+    RADAR_alpha = 30000000000.0;
+    RADAR_psd_threshold = 0.000316; // 1e-10*pow(8192,2);  // 450m ~= 0.000638 so psd_thres ~= 0.000316 ?
+    break;
+  case 14:
+    RADAR_LOGN  = 14;
+    RADAR_fs    = 32768000.0;
+    RADAR_alpha = 4800000000000.0;
+    //RADAR_psd_threshold = 1e-10*pow(8192,2);
+    RADAR_psd_threshold = 0.0067108864;
+    break;
+  default:
+    printf("ERROR : Unsupported Log-N FFT Samples Value: %u\n", fft_logn_samples);
+    exit(-1);
+  }
+  RADAR_N = (1 << RADAR_LOGN);
+}
+
+
+
+#ifdef HW_FFT
+#include "contig.h"
+#include "fixed_point.h"
+#include "mini-era.h"
+
+//#define FFT_DEVNAME  "/dev/fft.0"
+
+//extern int32_t fftHW_len;
+//extern int32_t fftHW_log_len;
+
+// extern int fftHW_fd;
+// extern contig_handle_t fftHW_mem;
+// extern fftHW_token_t* fftHW_lmem;
+
+// extern struct fftHW_access fftHW_desc;
+
+unsigned int fft_rev(unsigned int v)
+{
+        unsigned int r = v;
+        int s = sizeof(v) * CHAR_BIT - 1;
+
+        for (v >>= 1; v; v >>= 1) {
+                r <<= 1;
+                r |= v & 1;
+                s--;
+        }
+        r <<= s;
+        return r;
+}
+
+void fft_bit_reverse(float *w, unsigned int n, unsigned int bits)
+{
+        unsigned int i, s, shift;
+
+        s = sizeof(i) * CHAR_BIT - 1;
+        shift = s - bits + 1;
+
+        for (i = 0; i < n; i++) {
+                unsigned int r;
+                float t_real, t_imag;
+
+                r = fft_rev(i);
+                r >>= shift;
+
+                if (i < r) {
+                        t_real = w[2 * i];
+                        t_imag = w[2 * i + 1];
+                        w[2 * i] = w[2 * r];
+                        w[2 * i + 1] = w[2 * r + 1];
+                        w[2 * r] = t_real;
+                        w[2 * r + 1] = t_imag;
+                }
+        }
+}
+
+
+static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *mem, size_t size, size_t out_size,*/ struct fftHW_access *desc)
+{
+  //contig_copy_to(*mem, 0, inMemory, size);
+  DEBUG(printf("fft_in_hw before prod rdy\n"));
+  update_fft_prod_rdy();
+  update_fft_cons_valid();
+
+  DEBUG(printf("fft_in_hw after cons valid, before poll prod valid\n"));
+  // if (ioctl(*fd, FFTHW_IOC_ACCESS, *desc)) {
+  //   perror("IOCTL:");
+  //   exit(EXIT_FAILURE);
+  // }
+  while(!poll_fft_prod_valid());
+  update_fft_prod_valid();
+  DEBUG(printf("fft_in_hw done\n"));
+  //contig_copy_from(inMemory, *mem, 0, out_size);
+}
+#endif // HW_FFT
+
+float calculate_peak_dist_from_fmcw(float* data)
+{
+ #ifdef INT_TIME
+  gettimeofday(&calc_start, NULL);
+  int64_t temp, temp2, fft_calc_start;
+  fft_calc_start = get_counter();
+ #endif
+
+#ifdef HW_FFT
+ #ifndef HW_FFT_BITREV
+  // preprocess with bitreverse (fast in software anyway)
+  //fft_bit_reverse(data, fftHW_len, fftHW_log_len);
+ DEBUG(printf("calling bitreverse\n"));
+  fft_bit_reverse(data, RADAR_N, RADAR_LOGN);
+ #endif // HW_FFT
+ #ifdef INT_TIME
+
+  temp2 = get_counter();
+  gettimeofday(&fft_br_stop, NULL);
+  fft_br_sec  += fft_br_stop.tv_sec  - calc_start.tv_sec;
+  fft_br_usec += fft_br_stop.tv_usec - calc_start.tv_usec;
+  fft_br_cycles += temp2-fft_calc_start;
+  gettimeofday(&fft_cvtin_start, NULL);
+  temp = get_counter();
+ #endif // INT_TIME
+
+
+//BM
+DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
+  while(!poll_fft_cons_rdy());
+  update_fft_cons_rdy();
+  // convert input to fixed point
+  //for (int j = 0; j < 2 * fftHW_len; j++) {
+  // for (int j = 0; j < 2 * RADAR_N; j++) {
+  for (int j = 0; j < 2 * RADAR_N; j+=2) {
+    //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
+    //BM
+    // [j] [j+1]
+    // [j+1, j]
+    // fftHW_lmem[j] = float2fx(data[j], FX_IL);
+    uint64_t val_64 = float2fx(data[j+1], FX_IL);
+    val_64 = val_64 << 32;
+    val_64 |= (((uint64_t)(float2fx(data[j], FX_IL)))&0xFFFFFFFF);
+    // write_mem(&fftHW_lmem[SYNC_VAR_SIZE+j], val_64);
+    write_mem(&fftHW_li_mem[j], val_64);
+
+    SDEBUG(if (j < 64) { 
+	    printf("FFT_IN_DATA %u : %f\n", j, data[j]);
+      });
+  }
+ #ifdef INT_TIME
+
+  temp2 = get_counter();
+  gettimeofday(&fft_cvtin_stop, NULL);
+  fft_cvtin_sec  += fft_cvtin_stop.tv_sec  - fft_cvtin_start.tv_sec;
+  fft_cvtin_usec += fft_cvtin_stop.tv_usec - fft_cvtin_start.tv_usec;
+  fft_cvtin_cycles += temp2-temp;
+  gettimeofday(&fft_start, NULL);
+  temp = get_counter();
+ #endif // INT_TIME
+
+  DEBUG(printf("calling fft in hw\n"));
+  fft_in_hw(&fftHW_fd, &fftHW_desc);
+ #ifdef INT_TIME
+  temp2 = get_counter();
+  gettimeofday(&fft_stop, NULL);
+  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
+  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
+  fft_cycles += temp2-temp;
+  gettimeofday(&fft_cvtout_start, NULL);
+  temp = get_counter();
+ #endif // INT_TIME
+  //for (int j = 0; j < 2 * fftHW_len; j++) {
+    //BM
+  // for (int j = 0; j < 2 * RADAR_N; j++) {
+  for (int j = 0; j < 2 * RADAR_N; j+=2) {
+    // data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
+    //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
+
+    uint64_t val_64 = read_mem(&fftHW_lo_mem[j]); // SYNC_VAR_SIZE+acc_len+
+    // uint64_t val_64 = read_mem(&fftHW_lmem[SYNC_VAR_SIZE+acc_len+j]);
+
+    data[j] = (float)fx2float((int)(val_64&0xFFFFFFFF), FX_IL);
+    data[j+1] = (float)fx2float((int)((val_64>>32)&0xFFFFFFFF), FX_IL);
+
+    SDEBUG(if (j < 64) { 
+	    printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
+      });
+  }
+ #ifdef INT_TIME
+  temp2 = get_counter();
+  gettimeofday(&fft_cvtout_stop, NULL);
+  fft_cvtout_sec  += fft_cvtout_stop.tv_sec  - fft_cvtout_start.tv_sec;
+  fft_cvtout_usec += fft_cvtout_stop.tv_usec - fft_cvtout_start.tv_usec;
+  fft_cvtout_cycles += temp2-temp;
+ #endif // INT_TIME
+#else // if HW_FFT
+ #ifdef INT_TIME
+  gettimeofday(&fft_start, NULL);
+  temp = get_counter();
+ #endif // INT_TIME
+  SDEBUG(for (int tj = 0; tj < 64; tj++) {
+	  printf("FFT_IN_DATA %u : %f\n", tj, data[tj]);
+    });
+  fft(data, RADAR_N, RADAR_LOGN, -1);
+  SDEBUG(for (int tj = 0; tj < 64; tj++) {
+	  printf("FFT_OUT_DATA %u : %f\n", tj, data[tj]);
+    });
+  /* for (int j = 0; j < 2 * RADAR_N; j++) { */
+  /*   printf("%u,%f\n", j, data[j]); */
+  /* } */
+ #ifdef INT_TIME
+  int64_t fft_calc_stop = get_counter();
+  gettimeofday(&fft_stop, NULL);
+  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
+  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
+  fft_cycles += fft_calc_stop-temp;
+ #endif // INT_TIME
+#endif // if HW_FFT
+
+ #ifdef INT_TIME
+  temp2 = get_counter();
+  gettimeofday(&calc_stop, NULL);
+  calc_sec  += calc_stop.tv_sec  - calc_start.tv_sec;
+  calc_usec += calc_stop.tv_usec - calc_start.tv_usec;
+  calc_cycles += temp2 - fft_calc_start;
+  gettimeofday(&cdfmcw_start, NULL);
+  temp = get_counter();
+ #endif // INT_TIME
+  float max_psd = 0;
+  unsigned int max_index = 0;
+  unsigned int i;
+  float __temp;
+  for (i=0; i < RADAR_N; i++) {
+    __temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
+    if (__temp > max_psd) {
+      max_psd = __temp;
+      max_index = i;
+    }
+  }
+  float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
+  //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
+  // printf("fft_cvtin_cycles = %llu fft_br_cycles = %llu fft_cvtout_cycles = %llu fft_cycles=%llu calc_cycles=%llu\n",fft_cvtin_cycles,fft_br_cycles,fft_cvtout_cycles, fft_cycles, calc_cycles);
+ #ifdef INT_TIME
+  temp2 = get_counter();
+  gettimeofday(&cdfmcw_stop, NULL);
+  cdfmcw_sec  += cdfmcw_stop.tv_sec  - cdfmcw_start.tv_sec;
+  cdfmcw_usec += cdfmcw_stop.tv_usec - cdfmcw_start.tv_usec;
+  cdfmcw_cycles += temp2 - temp;
+ #endif // INT_TIME
+  //printf("max_psd = %f  vs %f\n", max_psd, 1e-10*pow(8192,2));
+  if (max_psd > RADAR_psd_threshold) {
+    return distance;
+  } else {
+    return INFINITY;
+  }
+}
 

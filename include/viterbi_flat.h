@@ -69,5 +69,21 @@ extern uint64_t depunc_sec;
 extern uint64_t depunc_usec;
 #endif
 
+#ifdef HW_VIT
+
+// inline uint32_t poll_vitdodec_cons_rdy();
+
+// inline uint32_t poll_vitdodec_prod_valid();
+
+
+// inline void update_vitdodec_cons_valid(int last);
+
+// inline void update_vitdodec_cons_rdy();
+
+// inline void update_vitdodec_prod_rdy();
+
+// inline void update_vitdodec_prod_valid();
+#endif
+
 
 #endif

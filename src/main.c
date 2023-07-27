@@ -25,17 +25,20 @@
 #include "sim_environs.h"
 #include "getopt.h"
 
-#define TIME
+// #define TIME
+
 
 #ifdef INT_TIME
 extern uint64_t calc_sec;
 extern uint64_t calc_usec;
+extern uint64_t calc_cycles;
 
 extern uint64_t fft_sec;
 extern uint64_t fft_usec;
 
 extern uint64_t bitrev_sec;
 extern uint64_t bitrev_usec;
+extern uint64_t bitrev_cycles;
 
 extern uint64_t fft_br_sec;
 extern uint64_t fft_br_usec;
@@ -48,12 +51,15 @@ extern uint64_t fft_cvtout_usec;
 
 extern uint64_t cdfmcw_sec;
 extern uint64_t cdfmcw_usec;
+extern uint64_t cdfmcw_cycles;
 
 extern uint64_t dodec_sec;
 extern uint64_t dodec_usec;
+extern uint64_t dodec_cycles;
 
 extern uint64_t depunc_sec;
 extern uint64_t depunc_usec;
+extern uint64_t depunc_cycles;
 
 extern uint64_t cv_call_sec;
 extern uint64_t cv_call_usec;
@@ -63,15 +69,53 @@ extern uint64_t nvdla_usec;
 
 extern uint64_t parse_sec;
 extern uint64_t parse_usec;
+
+
+extern uint64_t fft_br_cycles;
+extern uint64_t fft_cvtin_cycles;
+extern uint64_t fft_cvtout_cycles;
+extern uint64_t fft_cycles;
 #endif
 
+
+#ifdef HW_FFT
+extern void update_fft_end();
+#endif
+#ifdef HW_VIT
+extern void update_vitdodec_end();
+#endif
+
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
 char cv_dict[256]; 
 char rad_dict[256];
 char vit_dict[256];
 
+unsigned fft_logn_samples;
 extern unsigned use_device_number;
 
-bool_t all_obstacle_lanes_mode = false;
+bool all_obstacle_lanes_mode = false;
 
 unsigned time_step = 0;         // The number of elapsed time steps
 unsigned max_time_steps = 5000; // The max time steps to simulate (default to 5000)
@@ -113,10 +157,11 @@ int main(int argc, char *argv[])
   label_t label;
   distance_t distance;
   message_t message;
+  fft_logn_samples = 10;
 #ifdef USE_SIM_ENVIRON
   char* world_desc_file_name = "default_world.desc";
 #else
-  char* trace_file = "";
+  char* trace_file = "traces/test_trace.new";
 #endif
   int opt;
 
@@ -127,7 +172,7 @@ int main(int argc, char *argv[])
   // put ':' in the starting of the
   // string so that program can
   // distinguish between '?' and ':'
-  while((opt = getopt(argc, argv, ":hAot:v:n:s:r:W:R:V:C:D:f:")) != -1) {
+  while((opt = getopt(argc, argv, ":hAot:v:n:s:r:W:R:V:C:D:f:b:")) != -1) {
     switch(opt) {
     case 'h':
       print_usage(argv[0]);
@@ -154,6 +199,10 @@ int main(int argc, char *argv[])
     case 's':
       max_time_steps = atoi(optarg);
       DEBUG(printf("Using %u maximum time steps (simulation)\n", max_time_steps));
+      break;
+    case 'b':
+      fft_logn_samples = atoi(optarg);
+      DEBUG(printf("fft_logn_samples: %u \n", fft_logn_samples));
       break;
     case 'f':
       crit_fft_samples_set = atoi(optarg);
@@ -211,7 +260,8 @@ int main(int argc, char *argv[])
 
 
   if (rad_dict[0] == '\0') {
-    sprintf(rad_dict, "traces/norm_radar_16k_dictionary.dfn");
+    // sprintf(rad_dict, "traces/norm_radar_16k_dictionary.dfn");
+    sprintf(rad_dict, "traces/norm_radar_01k_dictionary.dfn");
   }
   if (vit_dict[0] == '\0') {
     sprintf(vit_dict, "traces/vit_dictionary.dfn");
@@ -220,10 +270,12 @@ int main(int argc, char *argv[])
     sprintf(cv_dict, "traces/cnn_dictionary");
   }
 
+#ifdef SUPER_VERBOSE
   printf("\nDictionaries:\n");
   printf("   CV/CNN : %s\n", cv_dict);
   printf("   Radar  : %s\n", rad_dict);
   printf("   Viterbi: %s\n", vit_dict);
+
 
   #ifdef USE_SIM_ENVIRON
   printf("Using world description file: %s\n", world_desc_file_name);
@@ -235,6 +287,8 @@ int main(int argc, char *argv[])
   printf("Using device number %d\n", use_device_number);
   printf("Using Radar Dictionary samples set %u for the critical FFT tasks\n", crit_fft_samples_set);
   printf("\n");
+
+  #endif
 
   /* We plan to use three separate trace files to drive the three different kernels
    * that are part of mini-ERA (CV, radar, Viterbi). All these three trace files
@@ -270,12 +324,12 @@ int main(int argc, char *argv[])
 #endif
 
   /* Kernels initialization */
-  printf("Initializing the CV kernel...\n");
-  if (!init_cv_kernel(cv_py_file, cv_dict))
-  {
-    printf("Error: the computer vision kernel couldn't be initialized properly.\n");
-    return 1;
-  }
+  // printf("Initializing the CV kernel...\n");
+  // if (!init_cv_kernel(cv_py_file, cv_dict))
+  // {
+  //   printf("Error: the computer vision kernel couldn't be initialized properly.\n");
+  //   return 1;
+  // }
   printf("Initializing the Radar kernel...\n");
   if (!init_rad_kernel(rad_dict))
   {
@@ -325,6 +379,11 @@ int main(int argc, char *argv[])
   uint64_t iter_vit_usec = 0LL;
   uint64_t iter_cv_usec  = 0LL;
 
+
+  uint64_t iter_rad_cycles = 0LL;
+  uint64_t iter_vit_cycles = 0LL;
+  uint64_t iter_cv_cycles  = 0LL;
+
   struct timeval stop_exec_rad, start_exec_rad;
   struct timeval stop_exec_vit, start_exec_vit;
   struct timeval stop_exec_cv , start_exec_cv;
@@ -336,6 +395,11 @@ int main(int argc, char *argv[])
   uint64_t exec_rad_usec = 0LL;
   uint64_t exec_vit_usec = 0LL;
   uint64_t exec_cv_usec  = 0LL;
+
+
+  uint64_t exec_rad_cycles = 0LL;
+  uint64_t exec_vit_cycles = 0LL;
+  uint64_t exec_cv_cycles  = 0LL;
   //printf("Program run time in milliseconds %f\n", (double) (stop.tv_sec - start.tv_sec) * 1000 + (double) (stop.tv_usec - start.tv_usec) / 1000);
  #endif // TIME
 
@@ -344,6 +408,7 @@ int main(int argc, char *argv[])
   /* The input trace contains the per-epoch (time-step) input data */
  #ifdef TIME
   gettimeofday(&start_prog, NULL);
+  uint64_t prog_start = get_counter();
  #endif
   
  #ifdef USE_SIM_ENVIRON
@@ -360,27 +425,30 @@ int main(int argc, char *argv[])
      * next image, and returns the corresponding label. 
      * This process takes place locally (i.e. within this car).
      */
-   #ifdef TIME
-    gettimeofday(&start_iter_cv, NULL);
-   #endif
-    label_t cv_tr_label = iterate_cv_kernel(vehicle_state);
-   #ifdef TIME
-    gettimeofday(&stop_iter_cv, NULL);
-    iter_cv_sec  += stop_iter_cv.tv_sec  - start_iter_cv.tv_sec;
-    iter_cv_usec += stop_iter_cv.tv_usec - start_iter_cv.tv_usec;
-   #endif
+  //  #ifdef TIME
+  //   gettimeofday(&start_iter_cv, NULL);
+  //  #endif
+  //   label_t cv_tr_label = iterate_cv_kernel(vehicle_state);
+  //  #ifdef TIME
+  //   gettimeofday(&stop_iter_cv, NULL);
+  //   iter_cv_sec  += stop_iter_cv.tv_sec  - start_iter_cv.tv_sec;
+  //   iter_cv_usec += stop_iter_cv.tv_usec - start_iter_cv.tv_usec;
+  //  #endif
 
     /* The radar kernel performs distance estimation on the next radar
      * data, and returns the estimated distance to the object.
      */
    #ifdef TIME
     gettimeofday(&start_iter_rad, NULL);
+    uint64_t temp = get_counter();
    #endif
     radar_dict_entry_t* rdentry_p = iterate_rad_kernel(vehicle_state);
    #ifdef TIME
+    uint64_t temp2 = get_counter();
     gettimeofday(&stop_iter_rad, NULL);
     iter_rad_sec  += stop_iter_rad.tv_sec  - start_iter_rad.tv_sec;
     iter_rad_usec += stop_iter_rad.tv_usec - start_iter_rad.tv_usec;
+    iter_rad_cycles += temp2-temp;
    #endif
     distance_t rdict_dist = rdentry_p->distance;
     float * ref_in = rdentry_p->return_data;
@@ -402,12 +470,16 @@ int main(int argc, char *argv[])
      */
    #ifdef TIME
     gettimeofday(&start_iter_vit, NULL);
+    temp = get_counter();
    #endif
     vit_dict_entry_t* vdentry_p = iterate_vit_kernel(vehicle_state);
    #ifdef TIME
+   temp2 = get_counter();
+
     gettimeofday(&stop_iter_vit, NULL);
     iter_vit_sec  += stop_iter_vit.tv_sec  - start_iter_vit.tv_sec;
     iter_vit_usec += stop_iter_vit.tv_usec - start_iter_vit.tv_usec;
+    iter_vit_cycles += temp2-temp;
    #endif
 
     // Here we will simulate multiple cases, based on global vit_msgs_behavior
@@ -417,36 +489,47 @@ int main(int argc, char *argv[])
     case 2: num_vit_msgs = total_obj + 1; break;
     }
 
-    // EXECUTE the kernels using the now known inputs 
+  //   // EXECUTE the kernels using the now known inputs 
+  //  #ifdef TIME
+  //   gettimeofday(&start_exec_cv, NULL);
+  //  #endif
+  //   label = execute_cv_kernel(cv_tr_label);
+  //  #ifdef TIME
+  //   gettimeofday(&stop_exec_cv, NULL);
+  //   exec_cv_sec  += stop_exec_cv.tv_sec  - start_exec_cv.tv_sec;
+  //   exec_cv_usec += stop_exec_cv.tv_usec - start_exec_cv.tv_usec;
+  //  #endif
    #ifdef TIME
-    gettimeofday(&start_exec_cv, NULL);
-   #endif
-    label = execute_cv_kernel(cv_tr_label);
-   #ifdef TIME
-    gettimeofday(&stop_exec_cv, NULL);
-    exec_cv_sec  += stop_exec_cv.tv_sec  - start_exec_cv.tv_sec;
-    exec_cv_usec += stop_exec_cv.tv_usec - start_exec_cv.tv_usec;
-
     gettimeofday(&start_exec_rad, NULL);
+    temp = get_counter();
    #endif
+    // printf("Entering execute_rad_kernel\n");
     distance = execute_rad_kernel(radar_inputs);
    #ifdef TIME
+    temp2 = get_counter();
     gettimeofday(&stop_exec_rad, NULL);
     exec_rad_sec  += stop_exec_rad.tv_sec  - start_exec_rad.tv_sec;
     exec_rad_usec += stop_exec_rad.tv_usec - start_exec_rad.tv_usec;
+    exec_rad_cycles += temp2-temp;
 
     gettimeofday(&start_exec_vit, NULL);
+    temp = get_counter();
    #endif
+    // printf("Entering execute_vit_kernel\n");
     message = execute_vit_kernel(vdentry_p, num_vit_msgs);
    #ifdef TIME
+    temp2 = get_counter();
     gettimeofday(&stop_exec_vit, NULL);
     exec_vit_sec  += stop_exec_vit.tv_sec  - start_exec_vit.tv_sec;
     exec_vit_usec += stop_exec_vit.tv_usec - start_exec_vit.tv_usec;
+    exec_vit_cycles += temp2-temp;
    #endif
 
     // POST-EXECUTE each kernels to gather stats, etc.
-    post_execute_cv_kernel(cv_tr_label, label);
+    // post_execute_cv_kernel(cv_tr_label, label);
+    // printf("Entering post_execute_rad_kernel\n");
     post_execute_rad_kernel(rdentry_p->set, rdentry_p->index_in_set, rdict_dist, distance);
+    // printf("Entering post_execute_vit_kernel\n");
     for (int mi = 0; mi < num_vit_msgs; mi++) {
       post_execute_vit_kernel(vdentry_p->msg_id, message);
     }
@@ -467,8 +550,14 @@ int main(int argc, char *argv[])
     read_next_trace_record(vehicle_state);
     #endif**/
   }
-
+  #ifdef HW_FFT
+  update_fft_end();
+  #endif
+  #ifdef HW_VIT
+  update_vitdodec_end();
+  #endif
  #ifdef TIME
+ int64_t prog_end_time = get_counter();
   gettimeofday(&stop_prog, NULL);
  #endif
 
@@ -476,7 +565,7 @@ int main(int argc, char *argv[])
   printf("\nRun completed %u time steps\n\n", time_step);
 
   /* All the traces have been fully consumed. Quitting... */
-  closeout_cv_kernel();
+  // closeout_cv_kernel();
   closeout_rad_kernel();
   closeout_vit_kernel();
 
@@ -489,12 +578,12 @@ int main(int argc, char *argv[])
     uint64_t exec_rad   = (uint64_t) (exec_rad_sec) * 1000000 + (uint64_t) (exec_rad_usec);
     uint64_t exec_vit   = (uint64_t) (exec_vit_sec) * 1000000 + (uint64_t) (exec_vit_usec);
     uint64_t exec_cv    = (uint64_t) (exec_cv_sec)  * 1000000 + (uint64_t) (exec_cv_usec);
-    printf("\nProgram total execution time     %lu usec\n", total_exec);
-    printf("  iterate_rad_kernel run time    %lu usec\n", iter_rad);
-    printf("  iterate_vit_kernel run time    %lu usec\n", iter_vit);
+    printf("\nProgram total execution time     %lu usec %lu cycles\n", total_exec , (int64_t)(prog_end_time-prog_start));
+    printf("  iterate_rad_kernel run time    %lu usec %lu cycles\n", iter_rad, iter_rad_cycles);
+    printf("  iterate_vit_kernel run time    %lu usec %lu cycles\n", iter_vit, iter_vit_cycles);
     printf("  iterate_cv_kernel run time     %lu usec\n", iter_cv);
-    printf("  execute_rad_kernel run time    %lu usec\n", exec_rad);
-    printf("  execute_vit_kernel run time    %lu usec\n", exec_vit);
+    printf("  execute_rad_kernel run time    %lu usec %lu cycles\n", exec_rad, exec_rad_cycles);
+    printf("  execute_vit_kernel run time    %lu usec %lu cycles\n", exec_vit, exec_vit_cycles);
     printf("  execute_cv_kernel run time     %lu usec\n", exec_cv);
   }
  #endif // TIME
@@ -502,28 +591,28 @@ int main(int argc, char *argv[])
   // These are timings taken from called routines...
   printf("\n");
   uint64_t fft_tot = (uint64_t) (calc_sec)  * 1000000 + (uint64_t) (calc_usec);
-  printf("  fft-total   run time    %lu usec\n", fft_tot);
+  printf("  fft-total   run time    %lu usec %lu cycles\n", fft_tot, calc_cycles);
  #ifdef HW_FFT
   uint64_t fft_br    = (uint64_t) (fft_br_sec)  * 1000000 + (uint64_t) (fft_br_usec);
-  printf("  bitrev      run time    %lu usec\n", fft_br);
+  printf("  bitrev      run time    %lu usec %lu cycles\n", fft_br, fft_br_cycles);
  #else 
   uint64_t bitrev    = (uint64_t) (bitrev_sec)  * 1000000 + (uint64_t) (bitrev_usec);
-  printf("  bit-reverse run time    %lu usec\n", bitrev);
+  printf("  bit-reverse run time    %lu usec %lu cycles\n", bitrev, bitrev_cycles);
  #endif
   uint64_t fft_cvtin    = (uint64_t) (fft_cvtin_sec)  * 1000000 + (uint64_t) (fft_cvtin_usec);
-  printf("  fft_cvtin   run time    %lu usec\n", fft_cvtin);
+  printf("  fft_cvtin   run time    %lu usec %lu cycles\n", fft_cvtin, fft_cvtin_cycles);
   uint64_t fft_comp    = (uint64_t) (fft_sec)  * 1000000 + (uint64_t) (fft_usec);
-  printf("  fft-comp    run time    %lu usec\n", fft_comp);
+  printf("  fft-comp    run time    %lu usec %lu cycles\n", fft_comp, fft_cycles);
   uint64_t fft_cvtout    = (uint64_t) (fft_cvtout_sec)  * 1000000 + (uint64_t) (fft_cvtout_usec);
-  printf("  fft_cvtout  run time    %lu usec\n", fft_cvtout);
+  printf("  fft_cvtout  run time    %lu usec %lu cycles\n", fft_cvtout, fft_cvtout_cycles);
   uint64_t cdfmcw    = (uint64_t) (cdfmcw_sec)  * 1000000 + (uint64_t) (cdfmcw_usec);
-  printf("  calc-dist   run time    %lu usec\n", cdfmcw);
+  printf("  calc-dist   run time    %lu usec %lu cycles \n", cdfmcw, cdfmcw_cycles);
 
   printf("\n");
   uint64_t depunc    = (uint64_t) (depunc_sec)  * 1000000 + (uint64_t) (depunc_usec);
-  printf("  depuncture  run time    %lu usec\n", depunc);
+  printf("  depuncture  run time    %lu usec %lu cycles\n", depunc, depunc_cycles);
   uint64_t dodec    = (uint64_t) (dodec_sec)  * 1000000 + (uint64_t) (dodec_usec);
-  printf("  do-decoding run time    %lu usec\n", dodec);
+  printf("  do-decoding run time    %lu usec %lu cycles\n", dodec, dodec_cycles);
 
   printf("\n");
   uint64_t cv_call   = (uint64_t) (cv_call_sec)  * 1000000 + (uint64_t) (cv_call_usec);

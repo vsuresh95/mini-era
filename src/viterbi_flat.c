@@ -41,13 +41,19 @@
  #include <unistd.h>
 
  #include "contig.h"
+ #define ENC_BYTES 17408
 #endif
 
 #include "base.h"
 #include "viterbi_flat.h"
 #include "viterbi_parms.h"
 
+#include "verbose.h"
+
+#define VIT_UPDATE_VAR_SIZE 8
 #ifdef HW_VIT
+  #include "mini-era.h"
+  // #include "coh_func.h"
  extern int vitHW_fd;
  extern contig_handle_t vitHW_mem;
  extern uint8_t* vitHW_lmem;   // Pointer to local view of my contig alloc space
@@ -58,17 +64,197 @@
  extern const size_t vitHW_size;
  extern struct vitdodec_access vitHW_desc;
 
- #include "mini-era.h"
+ extern unsigned VitProdRdyFlag;
+ extern unsigned VitProdVldFlag;
+ extern unsigned VitConsRdyFlag;
+ extern unsigned VitConsVldFlag;
+ extern unsigned VitEndFlag;
+
+
+inline void write_mem (void* dst, int64_t value_64)
+{
+	__asm__ volatile (
+		"mv t0, %0;"
+		"mv t1, %1;"
+		".word " QU(WRITE_CODE)
+		:
+		: "r" (dst), "r" (value_64)
+		: "t0", "t1", "memory"
+	);
+}
+
+/* Read from the memory*/
+inline int64_t read_mem (void* dst)
+{
+	int64_t value_64;
+
+	__asm__ volatile (
+		"mv t0, %1;"
+		".word " QU(READ_CODE) ";"
+		"mv %0, t1"
+		: "=r" (value_64)
+		: "r" (dst)
+		: "t0", "t1", "memory"
+	);
+
+	return value_64;
+}
+
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
+
+inline uint32_t poll_vitdodec_cons_rdy(){
+	int64_t value_64 = 0;
+	void* dst = (void*)(vitHW_lmem + (VitConsRdyFlag));
+	value_64 = read_mem(dst);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	return (value_64 == 1);
+
+	// return (vitHW_lmem[VitConsRdyFlag] == 1);
+}
+
+inline uint32_t poll_vitdodec_prod_valid(){
+	void* dst = (void*)(vitHW_lmem+(VitProdVldFlag));
+	int64_t value_64 = 0;
+	value_64 = read_mem(dst);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	vitHW_lmem[VitProdRdyFlag] = 1;
+	int time_var = 0;
+	while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");
+	return (value_64 == 1);
+
+	// // __asm__ volatile ("fence w, w");
+	// // vitHW_lmem[VitProdRdyFlag] = 1;
+	// __asm__ volatile ("fence w, w");
+	// return (vitHW_lmem[VitProdVldFlag]==1);
+}
+
+
+inline void update_vitdodec_cons_valid(){//int last
+	// #ifndef ESP
+	// __asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+	// void* dst = (void*)(vitHW_lmem+(VitConsVldFlag)+1);
+	// write_mem(dst, last);
+
+	// #ifdef ESP
+	// __asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+	__asm__ volatile ("fence w, w");	//release semantics
+	void* dst = (void*)(vitHW_lmem+(VitConsVldFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+
+	// #ifndef ESP
+	// __asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+	// // vitHW_lmem[VitConsVldFlag+VIT_UPDATE_VAR_SIZE] = last;
+
+	// #ifdef ESP
+	// __asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+
+	// vitHW_lmem[VitConsVldFlag] = 1;
+	__asm__ volatile ("fence w, w");	
+}
+
+
+void update_vitdodec_end(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem+(VitEndFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+	dst = (void*)(vitHW_lmem+(VitConsVldFlag));
+	write_mem(dst, value_64);
+	dst = (void*)(vitHW_lmem+(VitProdRdyFlag));
+	write_mem(dst, value_64);
+	int time_var = 0;
+	while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_vitdodec_cons_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem+(VitConsRdyFlag));
+	int64_t value_64 = 0;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+
+	// vitHW_lmem[VitConsRdyFlag] = 0;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_vitdodec_prod_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem+(VitProdRdyFlag));
+	int64_t value_64 = 1; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+
+	// // printf("vitHW_lmem[VitProdRdyFlag]: %u\n", vitHW_lmem[VitProdRdyFlag]);
+	// vitHW_lmem[VitProdRdyFlag] = 1;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_vitdodec_prod_valid(){
+	__asm__ volatile ("fence w, w");	//release semantics
+	void* dst = (void*)(vitHW_lmem+(VitProdVldFlag));
+	int64_t value_64 = 0; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	// vitHW_lmem[VitProdVldFlag] = 0;
+	__asm__ volatile ("fence w, w");	//acquire semantics
+}
+
 #endif
 
 #ifdef INT_TIME
 struct timeval dodec_stop, dodec_start;
 uint64_t dodec_sec  = 0LL;
 uint64_t dodec_usec = 0LL;
+uint64_t dodec_cycles = 0LL;
 
 struct timeval depunc_stop, depunc_start;
 uint64_t depunc_sec  = 0LL;
 uint64_t depunc_usec = 0LL;
+uint64_t depunc_cycles = 0LL;
+
+
+uint64_t dodec_input_cycles = 0LL;
+
+uint64_t vit_cons_rdy_wait_cycles = 0LL;
+uint64_t vit_prod_valid_wait_cycles = 0LL;
+
+// uint64_t dodec_output_cycles = 0LL;
 #endif
 
 #undef  GENERATE_CHECK_VALUES
@@ -130,10 +316,26 @@ uint8_t* depuncture(uint8_t *in) {
 #ifdef HW_VIT
 static void do_decoding_hw(int *fd, struct vitdodec_access *desc)
 {
-  if (ioctl(*fd, VITDODEC_IOC_ACCESS, *desc)) {
-    perror("IOCTL:");
-    exit(EXIT_FAILURE);
-  }
+  // if (ioctl(*fd, VITDODEC_IOC_ACCESS, *desc)) {
+  //   perror("IOCTL:");
+  //   exit(EXIT_FAILURE);
+  // }
+  DEBUG(printf(" do_decode_hwd(): update prod rdy\n"));
+  update_vitdodec_prod_rdy();
+  DEBUG(printf(" do_decode_hwd(): cons valid rdy\n"));
+//   update_vitdodec_cons_valid(0);
+  update_vitdodec_cons_valid();
+  DEBUG(printf(" do_decode_hwd(): Polling prod valid\n"));
+  #ifdef INT_TIME
+  uint64_t prodval_time_start = get_counter();
+  #endif
+  while(!poll_vitdodec_prod_valid());
+  update_vitdodec_prod_valid();
+  #ifdef INT_TIME
+  uint64_t prodval_time_stop = get_counter();
+  vit_prod_valid_wait_cycles += prodval_time_stop - prodval_time_start;
+  #endif
+  DEBUG(printf(" do_decode_hwd(): after Polling prod valid\n"));
 }
 #endif
 
@@ -649,12 +851,15 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 
 #ifdef INT_TIME
   gettimeofday(&depunc_start, NULL);
+  int64_t vit_temp_start = get_counter();
 #endif
   uint8_t *depunctured = depuncture(in);
 #ifdef INT_TIME
+  int64_t vit_temp_stop = get_counter();
   gettimeofday(&depunc_stop, NULL);
   depunc_sec  += depunc_stop.tv_sec  - depunc_start.tv_sec;
   depunc_usec += depunc_stop.tv_usec - depunc_start.tv_usec;
+  depunc_cycles += vit_temp_stop - vit_temp_start;
 #endif
 
   DO_VERBOSE({
@@ -680,10 +885,24 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     uint8_t outMemory[18585]; // This is "minimally sized for max entries"
    #endif
 
+    // Vit rdy poll
+	#ifdef HW_VIT
+	DEBUG(printf(" decode(): Polling conS rdy\n"));
+    #ifdef INT_TIME
+	int64_t consrdy_time_start = get_counter();
+	#endif
+    while(!poll_vitdodec_cons_rdy());
+    update_vitdodec_cons_rdy();
+	#endif
+
+	DEBUG(printf(" decode(): SETTING INPUTS\n"));
+	#ifdef INT_TIME
+	int64_t input_time_start = get_counter();
+	#endif
     int imi = 0;
     for (int ti = 0; ti < 2; ti ++) {
       for (int tj = 0; tj < 32; tj++) {
-	inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
+	      inMemory[imi++] = d_branchtab27_generic[ti].c[tj];
       }
     }
     if (imi != 64) { printf("ERROR : imi = %u and should be 64\n", imi); }
@@ -698,6 +917,11 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
       inMemory[imi++] = depunctured[ti];
     }
 
+	#ifdef INT_TIME
+	int64_t input_time_stop = get_counter();
+	vit_cons_rdy_wait_cycles += input_time_start - consrdy_time_start;
+	dodec_input_cycles += input_time_stop - input_time_start;
+	#endif
     if (imi != 24852) { printf("ERROR : imi = %u and should be 24852\n", imi); }
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
     // Reset the output space (for cleaner testing results)
@@ -718,21 +942,30 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     //printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback);
 #ifdef INT_TIME
     gettimeofday(&dodec_start, NULL);
+	vit_temp_start = get_counter();
 #endif
 #ifdef HW_VIT
-    vitHW_desc.cbps = ofdm->n_cbps;
-    vitHW_desc.ntraceback = d_ntraceback;
-    vitHW_desc.data_bits = frame->n_data_bits;
-    //printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits);
+    // vitHW_desc.cbps = ofdm->n_cbps;
+    // vitHW_desc.ntraceback = d_ntraceback;
+    // vitHW_desc.data_bits = frame->n_data_bits;
+    // //BM
+    // vitHW_desc.in_length = ENC_BYTES;
+    // vitHW_desc.out_length = 240;
+
+
+    
+    DEBUG(printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits));
     do_decoding_hw(&vitHW_fd, &vitHW_desc);
 #else
     // Call the viterbi_butterfly2_generic function using ESP interface
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
 #ifdef INT_TIME
+	vit_temp_stop = get_counter();
     gettimeofday(&dodec_stop, NULL);
     dodec_sec  += dodec_stop.tv_sec  - dodec_start.tv_sec;
     dodec_usec += dodec_stop.tv_usec - dodec_start.tv_usec;
+	dodec_cycles += (vit_temp_stop - vit_temp_start);
 #endif
 
 #ifndef HW_VIT
@@ -755,6 +988,10 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 #ifdef GENERATE_CHECK_VALUES
   printf("LAST-OUTPUT\n\n");
 #endif
+
+// printf("Viterbi input = %llu comp time = %llu vit_cons_rdy_wait = %lu vit_prod_valid_wait = %llu cycles \n",dodec_input_cycles, dodec_cycles, vit_cons_rdy_wait_cycles, vit_prod_valid_wait_cycles );
+// printf("Frame: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback);
+// printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits);
 #if HW_VIT
   return vitHW_lo_mem; // outMemory;
 #else

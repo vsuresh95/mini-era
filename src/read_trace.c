@@ -92,7 +92,7 @@ get_distance_token(char c)
 }
 
 
-bool_t read_next_trace_record(vehicle_state_t vs)
+bool read_next_trace_record(vehicle_state_t vs)
 {
   DEBUG(printf("In read_next_trace_record\n"));
   if (feof(input_trace)) { 
@@ -114,7 +114,7 @@ bool_t read_next_trace_record(vehicle_state_t vs)
   /* 1) Read the next entry (line, epoch) from the trace */
   void* fres = fgets(in_line_buf, MAX_TR_LINE_SZ, input_trace);
   if (fres == NULL) { // If fgets returns NULL then we hit EOF
-    printf(" FGETS returned NULL - feof = %u\n", feof(input_trace));
+    DEBUG(printf(" FGETS returned NULL - feof = %u\n", feof(input_trace)));
     return false; // Indicate we didn't read from the trace (EOF)
   }
   
@@ -185,9 +185,9 @@ bool_t read_next_trace_record(vehicle_state_t vs)
   return true;
 }
 
-bool_t eof_trace_reader()
+bool eof_trace_reader()
 {
-  bool_t res = feof(input_trace);
+  bool res = feof(input_trace);
   DEBUG(printf("In eof_trace_reader feof = %u\n", res));
   return res;
 }

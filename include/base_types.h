@@ -19,7 +19,7 @@
 #define H_BASE_TYPES_H
 
 /* Types definitions */
-typedef enum {false, true} bool_t;
-typedef enum {error, success} status_t;
+// typedef enum temp_bool {false, true} bool_t;
+typedef enum temp_status {error, success} status_t;
 
 #endif
