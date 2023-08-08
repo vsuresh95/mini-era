@@ -81,6 +81,10 @@ ifdef CONFIG_GDB
 CFLAGS += -g
 endif
 
+ifdef CONFIG_SENSOR
+CFLAGS += -DUSE_FFT_SENSOR -DUSE_VIT_SENSOR
+endif
+
 LDLIBS ?=
 ifdef COMPILE_TO_ESP
  LDLIBS += -L$(ESP_BUILD_DRIVERS)/contig_alloc

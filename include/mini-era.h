@@ -21,6 +21,17 @@
 #include "coh_func.h"
 
 
+struct audio_dma_stratus_access {
+	struct esp_access esp;
+	/* <<--regs-->> */
+	unsigned start_offset;
+	unsigned src_offset;
+	unsigned dst_offset;
+	unsigned spandex_conf;
+};
+
+#define AUDIO_DMA_STRATUS_IOC_ACCESS	_IOW ('S', 0, struct audio_dma_stratus_access)
+
 struct vitdodec_access {
 	struct esp_access esp;
 	/* <<--regs-->> */

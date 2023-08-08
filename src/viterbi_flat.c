@@ -913,9 +913,13 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     if (imi != 70) { printf("ERROR : imi = %u and should be 70\n", imi); }
     // imi = 70
     imi += 2; // Padding
+#ifdef USE_VIT_SENSOR
+	imi += MAX_ENCODED_BITS;
+#else
     for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
       inMemory[imi++] = depunctured[ti];
     }
+#endif
 
 	#ifdef INT_TIME
 	int64_t input_time_stop = get_counter();

@@ -35,6 +35,7 @@ extern uint64_t calc_cycles;
 
 extern uint64_t fft_sec;
 extern uint64_t fft_usec;
+extern uint64_t fft_cycles;
 
 extern uint64_t bitrev_sec;
 extern uint64_t bitrev_usec;
@@ -42,12 +43,15 @@ extern uint64_t bitrev_cycles;
 
 extern uint64_t fft_br_sec;
 extern uint64_t fft_br_usec;
+extern uint64_t fft_br_cycles;
 
 extern uint64_t fft_cvtin_sec;
 extern uint64_t fft_cvtin_usec;
+extern uint64_t fft_cvtin_cycles;
 
 extern uint64_t fft_cvtout_sec;
 extern uint64_t fft_cvtout_usec;
+extern uint64_t fft_cvtout_cycles;
 
 extern uint64_t cdfmcw_sec;
 extern uint64_t cdfmcw_usec;
@@ -71,10 +75,6 @@ extern uint64_t parse_sec;
 extern uint64_t parse_usec;
 
 
-extern uint64_t fft_br_cycles;
-extern uint64_t fft_cvtin_cycles;
-extern uint64_t fft_cvtout_cycles;
-extern uint64_t fft_cycles;
 #endif
 
 
@@ -566,8 +566,11 @@ int main(int argc, char *argv[])
 
   /* All the traces have been fully consumed. Quitting... */
   // closeout_cv_kernel();
+
+#ifdef SUPER_VERBOSE
   closeout_rad_kernel();
   closeout_vit_kernel();
+#endif
 
   #ifdef TIME
   {
@@ -579,11 +582,11 @@ int main(int argc, char *argv[])
     uint64_t exec_vit   = (uint64_t) (exec_vit_sec) * 1000000 + (uint64_t) (exec_vit_usec);
     uint64_t exec_cv    = (uint64_t) (exec_cv_sec)  * 1000000 + (uint64_t) (exec_cv_usec);
     printf("\nProgram total execution time     %lu usec %lu cycles\n", total_exec , (int64_t)(prog_end_time-prog_start));
-    printf("  iterate_rad_kernel run time    %lu usec %lu cycles\n", iter_rad, iter_rad_cycles);
-    printf("  iterate_vit_kernel run time    %lu usec %lu cycles\n", iter_vit, iter_vit_cycles);
+    printf("  iterate_rad_kernel run time    %lu usec %lu cycles\n", iter_rad, iter_rad_cycles/time_step);
+    printf("  iterate_vit_kernel run time    %lu usec %lu cycles\n", iter_vit, iter_vit_cycles/time_step);
     printf("  iterate_cv_kernel run time     %lu usec\n", iter_cv);
-    printf("  execute_rad_kernel run time    %lu usec %lu cycles\n", exec_rad, exec_rad_cycles);
-    printf("  execute_vit_kernel run time    %lu usec %lu cycles\n", exec_vit, exec_vit_cycles);
+    printf("  execute_rad_kernel run time    %lu usec %lu cycles\n", exec_rad, exec_rad_cycles/time_step);
+    printf("  execute_vit_kernel run time    %lu usec %lu cycles\n", exec_vit, exec_vit_cycles/time_step);
     printf("  execute_cv_kernel run time     %lu usec\n", exec_cv);
   }
  #endif // TIME
@@ -591,28 +594,28 @@ int main(int argc, char *argv[])
   // These are timings taken from called routines...
   printf("\n");
   uint64_t fft_tot = (uint64_t) (calc_sec)  * 1000000 + (uint64_t) (calc_usec);
-  printf("  fft-total   run time    %lu usec %lu cycles\n", fft_tot, calc_cycles);
+  printf("  fft-total   run time    %lu usec %lu cycles\n", fft_tot, calc_cycles/time_step);
  #ifdef HW_FFT
   uint64_t fft_br    = (uint64_t) (fft_br_sec)  * 1000000 + (uint64_t) (fft_br_usec);
-  printf("  bitrev      run time    %lu usec %lu cycles\n", fft_br, fft_br_cycles);
+  printf("  bitrev      run time    %lu usec %lu cycles\n", fft_br, fft_br_cycles/time_step);
  #else 
   uint64_t bitrev    = (uint64_t) (bitrev_sec)  * 1000000 + (uint64_t) (bitrev_usec);
-  printf("  bit-reverse run time    %lu usec %lu cycles\n", bitrev, bitrev_cycles);
+  printf("  bit-reverse run time    %lu usec %lu cycles\n", bitrev, bitrev_cycles/time_step);
  #endif
   uint64_t fft_cvtin    = (uint64_t) (fft_cvtin_sec)  * 1000000 + (uint64_t) (fft_cvtin_usec);
-  printf("  fft_cvtin   run time    %lu usec %lu cycles\n", fft_cvtin, fft_cvtin_cycles);
+  printf("  fft_cvtin   run time    %lu usec %lu cycles\n", fft_cvtin, fft_cvtin_cycles/time_step);
   uint64_t fft_comp    = (uint64_t) (fft_sec)  * 1000000 + (uint64_t) (fft_usec);
-  printf("  fft-comp    run time    %lu usec %lu cycles\n", fft_comp, fft_cycles);
+  printf("  fft-comp    run time    %lu usec %lu cycles\n", fft_comp, fft_cycles/time_step);
   uint64_t fft_cvtout    = (uint64_t) (fft_cvtout_sec)  * 1000000 + (uint64_t) (fft_cvtout_usec);
-  printf("  fft_cvtout  run time    %lu usec %lu cycles\n", fft_cvtout, fft_cvtout_cycles);
+  printf("  fft_cvtout  run time    %lu usec %lu cycles\n", fft_cvtout, fft_cvtout_cycles/time_step);
   uint64_t cdfmcw    = (uint64_t) (cdfmcw_sec)  * 1000000 + (uint64_t) (cdfmcw_usec);
-  printf("  calc-dist   run time    %lu usec %lu cycles \n", cdfmcw, cdfmcw_cycles);
+  printf("  calc-dist   run time    %lu usec %lu cycles \n", cdfmcw, cdfmcw_cycles/time_step);
 
   printf("\n");
   uint64_t depunc    = (uint64_t) (depunc_sec)  * 1000000 + (uint64_t) (depunc_usec);
-  printf("  depuncture  run time    %lu usec %lu cycles\n", depunc, depunc_cycles);
+  printf("  depuncture  run time    %lu usec %lu cycles\n", depunc, depunc_cycles/time_step);
   uint64_t dodec    = (uint64_t) (dodec_sec)  * 1000000 + (uint64_t) (dodec_usec);
-  printf("  do-decoding run time    %lu usec %lu cycles\n", dodec, dodec_cycles);
+  printf("  do-decoding run time    %lu usec %lu cycles\n", dodec, dodec_cycles/time_step);
 
   printf("\n");
   uint64_t cv_call   = (uint64_t) (cv_call_sec)  * 1000000 + (uint64_t) (cv_call_usec);

@@ -31,3 +31,5 @@ CONFIG_KERAS_CV_BYPASS=y
 
 # This enables use of GDB, etc. (adds symbols to the compilation)
 CONFIG_GDB=y
+
+# CONFIG_SENSOR=y

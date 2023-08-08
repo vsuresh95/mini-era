@@ -74,6 +74,29 @@ static unsigned DMA_WORD_PER_BEAT(unsigned _st)
 
 #define ENC_BYTES 17408
 
+#define LOAD_STORE_FLAG_OFFSET 2
+#define NUM_CFG_REG 8
+#define VIT_LOAD_STORE_FLAG_OFFSET 2 * 4
+#define VIT_NUM_CFG_REG 8 * 4
+
+#define RD_SIZE SYNC_VAR_SIZE
+#define RD_SP_OFFSET SYNC_VAR_SIZE + 1
+#define MEM_SRC_OFFSET SYNC_VAR_SIZE + 2
+#define WR_SIZE SYNC_VAR_SIZE + 3
+#define WR_SP_OFFSET SYNC_VAR_SIZE + 4
+#define MEM_DST_OFFSET SYNC_VAR_SIZE + 5
+#define CONS_VALID_OFFSET SYNC_VAR_SIZE + 6
+#define CONS_READY_OFFSET SYNC_VAR_SIZE + 7
+
+#define VIT_RD_SIZE (SYNC_VAR_SIZE) * 4
+#define VIT_RD_SP_OFFSET (SYNC_VAR_SIZE + 1) * 4
+#define VIT_MEM_SRC_OFFSET (SYNC_VAR_SIZE + 2) * 4
+#define VIT_WR_SIZE (SYNC_VAR_SIZE + 3) * 4
+#define VIT_WR_SP_OFFSET (SYNC_VAR_SIZE + 4) * 4
+#define VIT_MEM_DST_OFFSET (SYNC_VAR_SIZE + 5) * 4
+#define VIT_CONS_VALID_OFFSET (SYNC_VAR_SIZE + 6) * 4
+#define VIT_CONS_READY_OFFSET (SYNC_VAR_SIZE + 7) * 4
+
 extern unsigned time_step;
 
 unsigned use_device_number = 0; // Default to /dev/*_stratus.0
@@ -303,8 +326,10 @@ unsigned bad_decode_msgs = 0; // Total messages decoded incorrectly during the f
 #ifdef HW_VIT
 // These are Viterbi Harware Accelerator Variales, etc.
 char VIT_DEVNAME[128];
+char VITDMA_DEVNAME[128];
 
 int vitHW_fd;
+int vitDMA_fd;
 contig_handle_t vitHW_mem;
 vitHW_token_t *vitHW_lmem;   // Pointer to local view of contig memory
 vitHW_token_t *vitHW_li_mem; // Pointer to input memory block
@@ -333,8 +358,14 @@ unsigned VitConsVldFlag;
 unsigned  VitEndFlag;
 struct vitdodec_access vitHW_desc;
 
+size_t vit_dma_len;
+size_t vit_dma_offset;
 
+struct audio_dma_stratus_access fftDMA_desc;
+struct audio_dma_stratus_access vitDMA_desc;
 
+fftHW_native_t *input_rad_mem;
+vitHW_token_t *input_vit_mem;
 
 void reset_vit_sync(){
 	int n;
@@ -375,6 +406,12 @@ static void init_vit_parameters()
 	vitHW_size = (vitHW_out_offset * sizeof(vitHW_token_t)) + vitHW_out_size; 
   //  + 2*VIT_SYNC_VAR_SIZE
 
+  vit_dma_len = vitHW_in_len + 2*VIT_SYNC_VAR_SIZE;
+  vit_dma_offset = vitHW_size;
+#ifdef USE_VIT_SENSOR
+	vitHW_size += 2 * vit_dma_len;
+#endif
+
 	VitProdRdyFlag = VIT_SYNC_VAR_SIZE + vitHW_in_words_adj + VIT_READY_FLAG_OFFSET;
 	VitProdVldFlag = VIT_SYNC_VAR_SIZE + vitHW_in_words_adj + VIT_VALID_FLAG_OFFSET;
   VitEndFlag = VitProdVldFlag + VIT_UPDATE_VAR_SIZE;
@@ -388,10 +425,12 @@ static void init_vit_parameters()
 #ifdef HW_FFT
 
 char FFT_DEVNAME[128];
+char FFTDMA_DEVNAME[128];
 
 
 
 int fftHW_fd;
+int fftDMA_fd;
 contig_handle_t fftHW_mem;
 
 fftHW_token_t* fftHW_lmem;  // Pointer to local version (mapping) of fftHW_mem
@@ -406,6 +445,7 @@ size_t fftHW_out_size;
 size_t fftHW_out_offset;
 size_t fftHW_size;
 size_t  acc_len;
+size_t  fft_dma_len;
 size_t  ConsRdyFlag;
 size_t	ConsVldFlag;
 size_t  EndFlag;
@@ -414,6 +454,7 @@ size_t	ProdVldFlag;
 size_t	DMARdyFlag ;
 size_t	DMAVldFlag ;
 
+size_t fft_dma_offset;
 
 struct fftHW_access fftHW_desc;
 
@@ -442,10 +483,15 @@ static void init_fft_parameters()
   // uint64_t num_samples = 1 << LOGN_SAMPLES; //131072 //275
   // acc_len = SYNC_VAR_SIZE + 2*len;
   acc_len = SYNC_VAR_SIZE + fftHW_in_len;
+  fft_dma_len = 2 * SYNC_VAR_SIZE + fftHW_in_len;
 	// fftHW_size = 2*acc_len;
   fftHW_out_offset = SYNC_VAR_SIZE + acc_len;
 	fftHW_size = (fftHW_out_offset * sizeof(fftHW_token_t)) + fftHW_out_size;
 
+  fft_dma_offset = fftHW_size;
+#ifdef USE_FFT_SENSOR
+	fftHW_size += 2 * fft_dma_len;
+#endif
 
   ConsRdyFlag = 0*acc_len + READY_FLAG_OFFSET;
 	ConsVldFlag = 0*acc_len + VALID_FLAG_OFFSET;
@@ -549,6 +595,191 @@ inline void update_fft_prod_rdy(){
 inline void update_fft_prod_valid(){
 	__asm__ volatile ("fence w, w");	//release semantics
 	void* dst = (void*)(fftHW_lmem+(ProdVldFlag));
+	int64_t value_64 = 0; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	//acquire semantics
+}
+
+#ifdef USE_FFT_SENSOR
+inline void reset_fftdma_sync(){
+	// Zero out sync region.
+	for (unsigned sync_index = 0; sync_index < 2 * SYNC_VAR_SIZE; sync_index+=2) {
+		write_mem(((void*)(fftHW_lmem + fft_dma_offset + sync_index)), 0);
+	}
+
+	for (unsigned sync_index = 0; sync_index < 2 * SYNC_VAR_SIZE; sync_index+=2) {
+		write_mem(((void*)(fftHW_lmem + fft_dma_offset + fft_dma_len + sync_index)), 0);
+	}
+
+	// Reset all sync variables to default values.
+	write_mem(((void*)(fftHW_lmem + fft_dma_offset + ConsVldFlag)), 0);
+	write_mem(((void*)(fftHW_lmem + fft_dma_offset + ConsRdyFlag)), 1);
+	write_mem(((void*)(fftHW_lmem + fft_dma_offset + LOAD_STORE_FLAG_OFFSET)), 0);
+	write_mem(((void*)(fftHW_lmem + fft_dma_offset + fft_dma_len + ConsVldFlag)), 0);
+	write_mem(((void*)(fftHW_lmem + fft_dma_offset + fft_dma_len + ConsRdyFlag)), 1);
+
+	__asm__ volatile ("fence w, w");	
+}
+
+inline uint32_t poll_fftdma_cons_rdy(){
+	int64_t value_64 = 0;
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + (ConsRdyFlag));
+	value_64 = read_mem(dst);
+	return (value_64 == 1);
+}
+
+inline void update_fftdma_cons_valid(){
+	// #ifdef ESP
+	__asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + (ConsVldFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+
+
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+
+void update_fftdma_end(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + LOAD_STORE_FLAG_OFFSET);
+	int64_t value_64 = 2;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_fftdma_cons_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + (ConsRdyFlag));
+	int64_t value_64 = 0;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline uint32_t poll_fftdma_prod_valid(){
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + fft_dma_len + (ConsVldFlag));
+	int64_t value_64 = 0;
+	value_64 = read_mem(dst);
+	return (value_64 == 1);
+}
+
+inline void update_fftdma_prod_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + fft_dma_len + (ConsRdyFlag));
+	int64_t value_64 = 1; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_fftdma_prod_valid(){
+	__asm__ volatile ("fence w, w");	//release semantics
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + fft_dma_len + (ConsVldFlag));
+	int64_t value_64 = 0; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	//acquire semantics
+}
+#endif
+
+#endif
+
+#ifdef USE_VIT_SENSOR
+inline void reset_vitdma_sync(){
+	// Zero out sync region.
+	for (unsigned sync_index = 0; sync_index < 2 * VIT_SYNC_VAR_SIZE; sync_index+=8) {
+		write_mem(((void*)(vitHW_lmem + vit_dma_offset + sync_index)), 0);
+	}
+
+	for (unsigned sync_index = 0; sync_index < 2 * VIT_SYNC_VAR_SIZE; sync_index+=8) {
+		write_mem(((void*)(vitHW_lmem + vit_dma_offset + vit_dma_len + sync_index)), 0);
+	}
+
+	// Reset all sync variables to default values.
+	write_mem(((void*)(vitHW_lmem + vit_dma_offset + VitConsVldFlag)), 0);
+	write_mem(((void*)(vitHW_lmem + vit_dma_offset + VitConsRdyFlag)), 1);
+	write_mem(((void*)(vitHW_lmem + vit_dma_offset + VIT_LOAD_STORE_FLAG_OFFSET)), 0);
+	write_mem(((void*)(vitHW_lmem + vit_dma_offset + vit_dma_len + VitConsVldFlag)), 0);
+	write_mem(((void*)(vitHW_lmem + vit_dma_offset + vit_dma_len + VitConsRdyFlag)), 1);
+
+	__asm__ volatile ("fence w, w");	
+}
+
+inline uint32_t poll_vitdma_cons_rdy(){
+	int64_t value_64 = 0;
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + (VitConsRdyFlag));
+	value_64 = read_mem(dst);
+	return (value_64 == 1);
+}
+
+inline void update_vitdma_cons_valid(){
+	// #ifdef ESP
+	__asm__ volatile ("fence w, w");	//release semantics
+	// #endif
+
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + (VitConsVldFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+
+
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+
+void update_vitdma_end(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + VIT_LOAD_STORE_FLAG_OFFSET);
+	int64_t value_64 = 2;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_vitdma_cons_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + (VitConsRdyFlag));
+	int64_t value_64 = 0;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline uint32_t poll_vitdma_prod_valid(){
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + vit_dma_len + (VitConsVldFlag));
+	int64_t value_64 = 0;
+	value_64 = read_mem(dst);
+	return (value_64 == 1);
+}
+
+inline void update_vitdma_prod_rdy(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + vit_dma_len + (VitConsRdyFlag));
+	int64_t value_64 = 1; 
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+}
+
+inline void update_vitdma_prod_valid(){
+	__asm__ volatile ("fence w, w");	//release semantics
+	void* dst = (void*)(vitHW_lmem + vit_dma_offset + vit_dma_len + (VitConsVldFlag));
 	int64_t value_64 = 0; 
 	write_mem(dst, value_64);
 	// int time_var = 0;
@@ -760,6 +991,86 @@ status_t init_rad_kernel(char* dict_fn)
     perror("IOCTL:");
     exit(EXIT_FAILURE);
   }
+
+#ifdef USE_FFT_SENSOR
+  snprintf(FFTDMA_DEVNAME, 128, "/dev/audio_dma_stratus.%u", use_device_number);
+  fftDMA_fd = open(FFTDMA_DEVNAME, O_RDWR, 0);
+  if (fftDMA_fd < 0) {
+    fprintf(stderr, "Error: cannot open %s", FFTDMA_DEVNAME);
+    exit(EXIT_FAILURE);
+  }
+
+  fftDMA_desc.esp.run = true;
+  fftDMA_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  fftDMA_desc.esp.p2p_store = 0;
+  fftDMA_desc.esp.p2p_nsrcs = 0;
+  fftDMA_desc.esp.start_stop = 1;
+  fftDMA_desc.esp.contig = contig_to_khandle(fftHW_mem);
+
+  fftDMA_desc.start_offset = fft_dma_offset;
+  fftDMA_desc.src_offset = 0;
+  fftDMA_desc.dst_offset = 0;
+
+  reset_fftdma_sync();
+
+  if (ioctl(fftDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, fftDMA_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
+
+  // copy radar data to FFT sensor scratchpad
+  for (int i = 0; i < radar_dict_items_per_set; i++)
+  {
+    input_rad_mem = &(the_radar_return_dict[0][i].return_data[0]);
+
+    // We're writing the input data to the same location.
+	  // write_mem(((void*)(fftHW_lmem + fft_dma_offset + MEM_SRC_OFFSET)), fft_dma_offset + (2 * SYNC_VAR_SIZE));
+	  fftHW_lmem[fft_dma_offset + MEM_SRC_OFFSET] = fft_dma_offset + (2 * SYNC_VAR_SIZE);
+    // The total amount of data for each radar dict
+	  // write_mem(((void*)(fftHW_lmem + fft_dma_offset + RD_SIZE)), 2*(1<<fft_logn_samples));
+	  fftHW_lmem[fft_dma_offset + RD_SIZE] = 2*(1<<fft_logn_samples);
+
+    // Wait for DMA (consumer) to be ready.
+    while(!poll_fftdma_cons_rdy());
+    // Reset flag for next iteration.
+    update_fftdma_cons_rdy();
+
+    fftHW_native_t *fftHW_lmem_temp = (fftHW_native_t *) &(fftHW_lmem[fft_dma_offset + (2 * SYNC_VAR_SIZE)]);
+
+    for(unsigned niSample = 0; niSample < 2*(1<<fft_logn_samples); niSample++) {
+      fftHW_lmem_temp[niSample] = input_rad_mem[niSample];
+    }
+
+    // We increment the scratchpad offset every dict.
+	  // write_mem(((void*)(fftHW_lmem + fft_dma_offset + RD_SP_OFFSET)), i*2*(1<<fft_logn_samples));
+	  fftHW_lmem[fft_dma_offset + RD_SP_OFFSET] = i*2*(1<<fft_logn_samples);
+
+	  // Inform DMA (consumer) to start.
+	  update_fftdma_cons_valid();
+  }
+
+	// Wait for DMA (consumer) to be ready.
+	while(!poll_fftdma_cons_rdy());
+	// Reset flag for next iteration.
+	update_fftdma_cons_rdy();
+	// End the DMA operation.
+	update_fftdma_end();
+	// Inform DMA (consumer) to start.
+	update_fftdma_cons_valid();
+
+  fftDMA_desc.spandex_conf = spandex_config.spandex_reg;
+
+  reset_fftdma_sync();
+
+  if (ioctl(fftDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, fftDMA_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
+
+  // address to be used for all FFT input data streaming in from the sensor
+  // input_rad_mem = &fftHW_lmem[fft_dma_offset + fft_dma_len + 2 * SYNC_VAR_SIZE];
+#endif // if USE_FFT_SENSOR
+
   return success;
   #endif /* FFT IN HW*/
 }
@@ -942,6 +1253,86 @@ status_t init_vit_kernel(char* dict_fn)
     perror("IOCTL:");
     exit(EXIT_FAILURE);
   }
+
+#ifdef USE_VIT_SENSOR
+  snprintf(VITDMA_DEVNAME, 128, "/dev/audio_dma_stratus.%u", use_device_number+1);
+  vitDMA_fd = open(VITDMA_DEVNAME, O_RDWR, 0);
+  if (vitDMA_fd < 0) {
+    fprintf(stderr, "Error: cannot open %s", VITDMA_DEVNAME);
+    exit(EXIT_FAILURE);
+  }
+
+  vitDMA_desc.esp.run = true;
+  vitDMA_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  vitDMA_desc.esp.p2p_store = 0;
+  vitDMA_desc.esp.p2p_nsrcs = 0;
+  vitDMA_desc.esp.start_stop = 1;
+  vitDMA_desc.esp.contig = contig_to_khandle(vitHW_mem);
+
+  vitDMA_desc.start_offset = vit_dma_offset/4;
+  vitDMA_desc.src_offset = 0;
+  vitDMA_desc.dst_offset = 0;
+  
+  reset_vitdma_sync();
+
+  if (ioctl(vitDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, vitDMA_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
+
+  // copy radar data to VIT sensor scratchpad
+  for (int i = 0; i < 12; i++)
+  {
+    input_vit_mem = &(the_viterbi_trace_dict[i].in_bits[0]);
+
+    fftHW_token_t *vitdmaHW_lmem = (fftHW_token_t *) vitHW_lmem;
+
+    // We're writing the input data to the same location.
+	  // write_mem(((void*)(vitHW_lmem + vit_dma_offset + VIT_MEM_SRC_OFFSET)), vit_dma_offset + 2 * SYNC_VAR_SIZE);
+    vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_MEM_SRC_OFFSET]);
+	  *vitdmaHW_lmem = (vit_dma_offset/4) + (2 * SYNC_VAR_SIZE);
+
+    // The total amount of data for each radar dict
+	  // write_mem(((void*)(vitHW_lmem + vit_dma_offset + VIT_RD_SIZE)), ENC_BYTES/sizeof(int64_t));
+    vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_RD_SIZE]);
+	  *vitdmaHW_lmem = round_up(ENC_BYTES/4, 4);
+
+    // Wait for DMA (consumer) to be ready.
+    while(!poll_vitdma_cons_rdy());
+    // Reset flag for next iteration.
+    update_vitdma_cons_rdy();
+
+    for(unsigned niSample = 0; niSample < ENC_BYTES; niSample++) {
+      vitHW_lmem[vit_dma_offset + (2 * VIT_SYNC_VAR_SIZE) + niSample] = input_vit_mem[niSample];
+    }
+
+    // We increment the scratchpad offset every dict.
+	  // write_mem(((void*)(vitHW_lmem + vit_dma_offset + VIT_RD_SP_OFFSET)), i*ENC_BYTES/sizeof(int64_t));
+    vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_RD_SP_OFFSET]);
+	  *vitdmaHW_lmem = i*round_up(ENC_BYTES/4, 4);
+
+	  // Inform DMA (consumer) to start.
+	  update_vitdma_cons_valid();
+  }
+
+	// Wait for DMA (consumer) to be ready.
+	while(!poll_vitdma_cons_rdy());
+	// Reset flag for next iteration.
+	update_vitdma_cons_rdy();
+	// End the DMA operation.
+	update_vitdma_end();
+	// Inform DMA (consumer) to start.
+	update_vitdma_cons_valid();
+
+  vitDMA_desc.spandex_conf = spandex_config.spandex_reg;
+
+  reset_vitdma_sync();
+
+  if (ioctl(vitDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, vitDMA_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
+#endif // if USE_VIT_SENSOR
 
 #endif
 
@@ -1203,6 +1594,47 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   unsigned tr_val = nearest_dist[vs.lane] / RADAR_BUCKET_DISTANCE;  // The proper message for this time step and car-lane
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
+
+#if USE_FFT_SENSOR
+  // Wait for DMA (consumer) to be ready.
+  while(!poll_fftdma_cons_rdy());
+  // Reset flag for next iteration.
+  update_fftdma_cons_rdy();
+  update_fftdma_prod_rdy();
+
+  // We're now storing data from the DMA's scratchpad.
+  fftHW_lmem[fft_dma_offset + LOAD_STORE_FLAG_OFFSET] = 1;
+
+  // DMA will write the input data to the same location for the CPU to read.
+  fftHW_lmem[fft_dma_offset + MEM_DST_OFFSET] = fft_dma_offset + fft_dma_len + (2 * SYNC_VAR_SIZE);
+
+	// Size for each transfer is the same.
+  fftHW_lmem[fft_dma_offset + WR_SIZE] = 2*(1<<fft_logn_samples);
+
+	// Offsets for sync variables to FFT.
+  fftHW_lmem[fft_dma_offset + CONS_VALID_OFFSET] = fft_dma_offset + fft_dma_len + VALID_FLAG_OFFSET;
+  fftHW_lmem[fft_dma_offset + CONS_READY_OFFSET] = fft_dma_offset + fft_dma_len + READY_FLAG_OFFSET;
+
+  // We increment the scratchpad offset every iteration.
+  fftHW_lmem[fft_dma_offset + WR_SP_OFFSET] = tr_val * 2*(1<<fft_logn_samples);
+
+  // Inform DMA (consumer) to start.
+  update_fftdma_cons_valid();
+
+  while(!poll_fftdma_prod_valid());
+  // Reset flag for next iteration.
+  update_fftdma_prod_valid();
+
+  fftHW_native_t *fftHW_lmem_temp = (fftHW_native_t *) &(fftHW_lmem[fft_dma_offset + fft_dma_len + (2 * SYNC_VAR_SIZE)]);
+
+  // for (unsigned i = 0; i < 2*(1<<fft_logn_samples); i++) {
+  //   printf("F E = %f A = %f\n",
+  //     the_radar_return_dict[crit_fft_samples_set][tr_val].return_data[i],
+  //     fftHW_lmem_temp[i]
+  //     );
+  // }
+#endif // USE_FFT_SENSOR
+
   return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
 }
   
@@ -1341,6 +1773,59 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
     break;
   }
   DEBUG(printf(" VIT: Using msg %u Id %u : %s \n", trace_msg->msg_num, trace_msg->msg_id, message_names[trace_msg->msg_id]));
+
+#if USE_VIT_SENSOR
+  // Wait for DMA (consumer) to be ready.
+  while(!poll_vitdma_cons_rdy());
+  // Reset flag for next iteration.
+  update_vitdma_cons_rdy();
+  update_vitdma_prod_rdy();
+
+  fftHW_token_t *vitdmaHW_lmem = (fftHW_token_t *) vitHW_lmem;
+
+  // We're now storing data from the DMA's scratchpad.
+  // vitHW_lmem[vit_dma_offset + LOAD_STORE_FLAG_OFFSET] = 1;
+  vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_LOAD_STORE_FLAG_OFFSET]);
+	*vitdmaHW_lmem = 1;
+
+  // DMA will write the input data to the same location for the CPU to read.
+  // vitHW_lmem[vit_dma_offset + MEM_DST_OFFSET] = SYNC_VAR_SIZE + 72;
+  vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_MEM_DST_OFFSET]);
+	*vitdmaHW_lmem = SYNC_VAR_SIZE + 72; // (vit_dma_offset + vit_dma_len)/4 + (2 * SYNC_VAR_SIZE);
+
+	// Size for each transfer is the same.
+  // vitHW_lmem[vit_dma_offset + WR_SIZE] = ENC_BYTES/sizeof(int64_t);
+  vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_WR_SIZE]);
+	*vitdmaHW_lmem = round_up(ENC_BYTES/4, 4);
+
+	// Offsets for sync variables to vit.
+  // vitHW_lmem[vit_dma_offset + CONS_VALID_OFFSET] = VALID_FLAG_OFFSET;
+  vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_CONS_VALID_OFFSET]);
+	*vitdmaHW_lmem = (vit_dma_offset + vit_dma_len)/4 + VALID_FLAG_OFFSET;
+  // vitHW_lmem[vit_dma_offset + CONS_READY_OFFSET] = READY_FLAG_OFFSET;
+  vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_CONS_READY_OFFSET]);
+	*vitdmaHW_lmem = (vit_dma_offset + vit_dma_len)/4 + READY_FLAG_OFFSET;
+
+  // We increment the scratchpad offset every iteration.
+  // vitHW_lmem[vit_dma_offset + WR_SP_OFFSET] = tr_val * ENC_BYTES/sizeof(int64_t);
+  vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_WR_SP_OFFSET]);
+	*vitdmaHW_lmem = tr_val * round_up(ENC_BYTES/4, 4);
+
+  // Inform DMA (consumer) to start.
+  update_vitdma_cons_valid();
+
+  while(!poll_vitdma_prod_valid());
+  // Reset flag for next iteration.
+  update_vitdma_prod_valid();
+
+  // for (unsigned i = 0; i < ENC_BYTES; i++) {
+  //   printf("V E = %0x A = %0x\n",
+  //     trace_msg->in_bits[i],
+  //     vitHW_lmem[vit_dma_offset + vit_dma_len + (2 * VIT_SYNC_VAR_SIZE) + i]
+  //     );
+  // }
+#endif // USE_FFT_SENSOR
+
   return trace_msg;
 }
 
