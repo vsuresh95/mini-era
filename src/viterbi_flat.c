@@ -850,15 +850,11 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   reset();
 
 #ifdef INT_TIME
-  gettimeofday(&depunc_start, NULL);
   int64_t vit_temp_start = get_counter();
 #endif
   uint8_t *depunctured = depuncture(in);
 #ifdef INT_TIME
   int64_t vit_temp_stop = get_counter();
-  gettimeofday(&depunc_stop, NULL);
-  depunc_sec  += depunc_stop.tv_sec  - depunc_start.tv_sec;
-  depunc_usec += depunc_stop.tv_usec - depunc_start.tv_usec;
   depunc_cycles += vit_temp_stop - vit_temp_start;
 #endif
 
@@ -929,9 +925,11 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     if (imi != 24852) { printf("ERROR : imi = %u and should be 24852\n", imi); }
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
     // Reset the output space (for cleaner testing results)
+#ifndef HW_VIT
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
       outMemory[ti] = 0;
     }
+#endif
 
 #ifdef GENERATE_CHECK_VALUES
     printf("\nINPUTS-TO-DO-DECODING:\n");
@@ -945,7 +943,6 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)
     //printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback);
 #ifdef INT_TIME
-    gettimeofday(&dodec_start, NULL);
 	vit_temp_start = get_counter();
 #endif
 #ifdef HW_VIT
@@ -966,9 +963,6 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 #endif
 #ifdef INT_TIME
 	vit_temp_stop = get_counter();
-    gettimeofday(&dodec_stop, NULL);
-    dodec_sec  += dodec_stop.tv_sec  - dodec_start.tv_sec;
-    dodec_usec += dodec_stop.tv_usec - dodec_start.tv_usec;
 	dodec_cycles += (vit_temp_stop - vit_temp_start);
 #endif
 

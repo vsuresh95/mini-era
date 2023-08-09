@@ -131,7 +131,7 @@ float IMPACT_DISTANCE = 50.0; // Minimum distance at which an obstacle "impacts"
 /* These are types, functions, etc. required for VITERBI */
 #include "viterbi_flat.h"
 
-
+fftHW_native_t *fftHW_sense_buf;
 
 static inline uint64_t get_counter() {
     uint64_t t_end = 0;
@@ -366,6 +366,11 @@ struct audio_dma_stratus_access vitDMA_desc;
 
 fftHW_native_t *input_rad_mem;
 vitHW_token_t *input_vit_mem;
+
+#ifdef INT_TIME
+uint64_t decode_total_cycles = 0LL;
+uint64_t descram_cycles = 0LL;
+#endif
 
 void reset_vit_sync(){
 	int n;
@@ -944,7 +949,7 @@ status_t init_rad_kernel(char* dict_fn)
   fftHW_desc.esp.run = true;
   //BM
   // fftHW_desc.esp.coherence = ACC_COH_NONE;
-  fftHW_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  fftHW_desc.esp.coherence = coherence; //coherence;
   fftHW_desc.esp.p2p_store = 0;
   fftHW_desc.esp.p2p_nsrcs = 0;
   //fftHW_desc.esp.p2p_srcs = {"", "", "", ""};
@@ -1001,11 +1006,12 @@ status_t init_rad_kernel(char* dict_fn)
   }
 
   fftDMA_desc.esp.run = true;
-  fftDMA_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  fftDMA_desc.esp.coherence = coherence; //coherence;
   fftDMA_desc.esp.p2p_store = 0;
   fftDMA_desc.esp.p2p_nsrcs = 0;
   fftDMA_desc.esp.start_stop = 1;
   fftDMA_desc.esp.contig = contig_to_khandle(fftHW_mem);
+  fftDMA_desc.spandex_conf = 0;
 
   fftDMA_desc.start_offset = fft_dma_offset;
   fftDMA_desc.src_offset = 0;
@@ -1237,7 +1243,7 @@ status_t init_vit_kernel(char* dict_fn)
   vitHW_desc.accel_cons_rdy_offset = VitProdRdyFlag;
   vitHW_desc.accel_prod_vld_offset = VitConsVldFlag;
 
-  vitHW_desc.esp.coherence = ACC_COH_FULL;// coherence;//coherence;
+  vitHW_desc.esp.coherence = coherence;// coherence;//coherence;
   vitHW_desc.spandex_reg = spandex_config.spandex_reg;
   vitHW_desc.esp.start_stop = 1; //TODO: BM
 
@@ -1263,11 +1269,12 @@ status_t init_vit_kernel(char* dict_fn)
   }
 
   vitDMA_desc.esp.run = true;
-  vitDMA_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  vitDMA_desc.esp.coherence = coherence; //coherence;
   vitDMA_desc.esp.p2p_store = 0;
   vitDMA_desc.esp.p2p_nsrcs = 0;
   vitDMA_desc.esp.start_stop = 1;
   vitDMA_desc.esp.contig = contig_to_khandle(vitHW_mem);
+  vitDMA_desc.spandex_conf = 0;
 
   vitDMA_desc.start_offset = vit_dma_offset/4;
   vitDMA_desc.src_offset = 0;
@@ -1625,7 +1632,7 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   // Reset flag for next iteration.
   update_fftdma_prod_valid();
 
-  fftHW_native_t *fftHW_lmem_temp = (fftHW_native_t *) &(fftHW_lmem[fft_dma_offset + fft_dma_len + (2 * SYNC_VAR_SIZE)]);
+  fftHW_sense_buf = (fftHW_native_t *) &(fftHW_lmem[fft_dma_offset + fft_dma_len + (2 * SYNC_VAR_SIZE)]);
 
   // for (unsigned i = 0; i < 2*(1<<fft_logn_samples); i++) {
   //   printf("F E = %f A = %f\n",
@@ -1836,15 +1843,22 @@ message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
   message_t msg = num_message_t;
   uint8_t *result;
   char     msg_text[1600]; // Big enough to hold largest message (1500?)
+  int64_t temp, temp2;
   for (int mi = 0; mi < num_msgs; mi++) {
     DEBUG(printf("  Calling the viterbi decode routine for message %u iter %u\n", trace_msg->msg_num, mi));
     viterbi_messages_histogram[vit_msgs_size][trace_msg->msg_id]++; 
     int n_res_char;
+    temp = get_counter();
     result = decode(&(trace_msg->ofdm_p), &(trace_msg->frame_p), &(trace_msg->in_bits[0]), &n_res_char);
+    temp2 = get_counter();
+    decode_total_cycles += temp2-temp;
     // descramble the output - put it in result
     int psdusize = trace_msg->frame_p.psdu_size;
     DEBUG(printf("  Calling the viterbi descrambler routine\n"));
+    temp = get_counter();
     descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
+    temp2 = get_counter();
+    descram_cycles += temp2-temp;
 
    #if(0)
     printf(" PSDU %u : Msg : = `", psdusize);
@@ -2244,7 +2258,6 @@ static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *m
 float calculate_peak_dist_from_fmcw(float* data)
 {
  #ifdef INT_TIME
-  gettimeofday(&calc_start, NULL);
   int64_t temp, temp2, fft_calc_start;
   fft_calc_start = get_counter();
  #endif
@@ -2259,11 +2272,7 @@ float calculate_peak_dist_from_fmcw(float* data)
  #ifdef INT_TIME
 
   temp2 = get_counter();
-  gettimeofday(&fft_br_stop, NULL);
-  fft_br_sec  += fft_br_stop.tv_sec  - calc_start.tv_sec;
-  fft_br_usec += fft_br_stop.tv_usec - calc_start.tv_usec;
   fft_br_cycles += temp2-fft_calc_start;
-  gettimeofday(&fft_cvtin_start, NULL);
   temp = get_counter();
  #endif // INT_TIME
 
@@ -2294,11 +2303,7 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
  #ifdef INT_TIME
 
   temp2 = get_counter();
-  gettimeofday(&fft_cvtin_stop, NULL);
-  fft_cvtin_sec  += fft_cvtin_stop.tv_sec  - fft_cvtin_start.tv_sec;
-  fft_cvtin_usec += fft_cvtin_stop.tv_usec - fft_cvtin_start.tv_usec;
   fft_cvtin_cycles += temp2-temp;
-  gettimeofday(&fft_start, NULL);
   temp = get_counter();
  #endif // INT_TIME
 
@@ -2306,11 +2311,7 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   fft_in_hw(&fftHW_fd, &fftHW_desc);
  #ifdef INT_TIME
   temp2 = get_counter();
-  gettimeofday(&fft_stop, NULL);
-  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
-  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
   fft_cycles += temp2-temp;
-  gettimeofday(&fft_cvtout_start, NULL);
   temp = get_counter();
  #endif // INT_TIME
   //for (int j = 0; j < 2 * fftHW_len; j++) {
@@ -2332,14 +2333,10 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   }
  #ifdef INT_TIME
   temp2 = get_counter();
-  gettimeofday(&fft_cvtout_stop, NULL);
-  fft_cvtout_sec  += fft_cvtout_stop.tv_sec  - fft_cvtout_start.tv_sec;
-  fft_cvtout_usec += fft_cvtout_stop.tv_usec - fft_cvtout_start.tv_usec;
   fft_cvtout_cycles += temp2-temp;
  #endif // INT_TIME
 #else // if HW_FFT
  #ifdef INT_TIME
-  gettimeofday(&fft_start, NULL);
   temp = get_counter();
  #endif // INT_TIME
   SDEBUG(for (int tj = 0; tj < 64; tj++) {
@@ -2354,20 +2351,13 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   /* } */
  #ifdef INT_TIME
   int64_t fft_calc_stop = get_counter();
-  gettimeofday(&fft_stop, NULL);
-  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
-  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
   fft_cycles += fft_calc_stop-temp;
  #endif // INT_TIME
 #endif // if HW_FFT
 
  #ifdef INT_TIME
   temp2 = get_counter();
-  gettimeofday(&calc_stop, NULL);
-  calc_sec  += calc_stop.tv_sec  - calc_start.tv_sec;
-  calc_usec += calc_stop.tv_usec - calc_start.tv_usec;
   calc_cycles += temp2 - fft_calc_start;
-  gettimeofday(&cdfmcw_start, NULL);
   temp = get_counter();
  #endif // INT_TIME
   float max_psd = 0;
@@ -2386,9 +2376,6 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   // printf("fft_cvtin_cycles = %llu fft_br_cycles = %llu fft_cvtout_cycles = %llu fft_cycles=%llu calc_cycles=%llu\n",fft_cvtin_cycles,fft_br_cycles,fft_cvtout_cycles, fft_cycles, calc_cycles);
  #ifdef INT_TIME
   temp2 = get_counter();
-  gettimeofday(&cdfmcw_stop, NULL);
-  cdfmcw_sec  += cdfmcw_stop.tv_sec  - cdfmcw_start.tv_sec;
-  cdfmcw_usec += cdfmcw_stop.tv_usec - cdfmcw_start.tv_usec;
   cdfmcw_cycles += temp2 - temp;
  #endif // INT_TIME
   //printf("max_psd = %f  vs %f\n", max_psd, 1e-10*pow(8192,2));
