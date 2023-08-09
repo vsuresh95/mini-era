@@ -165,7 +165,7 @@ int main(int argc, char *argv[])
 #ifdef USE_SIM_ENVIRON
   char* world_desc_file_name = "default_world.desc";
 #else
-  char* trace_file = "traces/test_trace.new";
+  char* trace_file = "traces/test_trace1.new";
 #endif
   int opt;
 
