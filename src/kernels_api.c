@@ -267,6 +267,26 @@ const char print_coh[] = "Baseline Spandex";
 #endif
 #endif
 
+typedef union
+{
+  struct
+  {
+    fftHW_token_t value_32_1;
+    fftHW_token_t value_32_2;
+  };
+  int64_t value_64;
+} token_union_t;
+
+typedef union
+{
+  struct
+  {
+    fftHW_native_t value_32_1;
+    fftHW_native_t value_32_2;
+  };
+  int64_t value_64;
+} native_union_t;
+
 //END COH
 
 /* These are some top-level defines needed for CV kernel */
@@ -2240,7 +2260,6 @@ static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *m
 {
   //contig_copy_to(*mem, 0, inMemory, size);
   DEBUG(printf("fft_in_hw before prod rdy\n"));
-  update_fft_prod_rdy();
   update_fft_cons_valid();
 
   DEBUG(printf("fft_in_hw after cons valid, before poll prod valid\n"));
@@ -2262,6 +2281,16 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_calc_start = get_counter();
  #endif
 
+	unsigned InitLength = 2 * RADAR_N;
+  native_union_t SrcData;
+	fftHW_native_t* src;
+	token_union_t DstData;
+	fftHW_token_t* dst;
+  float max_psd = 0;
+  unsigned int max_index = 0;
+  unsigned int i;
+  float __temp;
+
 #ifdef HW_FFT
  #ifndef HW_FFT_BITREV
   // preprocess with bitreverse (fast in software anyway)
@@ -2281,25 +2310,39 @@ float calculate_peak_dist_from_fmcw(float* data)
 DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   while(!poll_fft_cons_rdy());
   update_fft_cons_rdy();
+
+	src = data;
+	dst = fftHW_li_mem;
+
+  for (unsigned niSample = 0; niSample < InitLength; niSample+=2, src+=2, dst+=2)
+	{
+		SrcData.value_64 = read_mem((void *) src);
+
+		DstData.value_32_1 = float2fx(SrcData.value_32_1, FX_IL);
+		DstData.value_32_2 = float2fx(SrcData.value_32_2, FX_IL);
+
+		write_mem((void *) dst, DstData.value_64);
+	}
+
   // convert input to fixed point
   //for (int j = 0; j < 2 * fftHW_len; j++) {
   // for (int j = 0; j < 2 * RADAR_N; j++) {
-  for (int j = 0; j < 2 * RADAR_N; j+=2) {
-    //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
-    //BM
-    // [j] [j+1]
-    // [j+1, j]
-    // fftHW_lmem[j] = float2fx(data[j], FX_IL);
-    uint64_t val_64 = float2fx(data[j+1], FX_IL);
-    val_64 = val_64 << 32;
-    val_64 |= (((uint64_t)(float2fx(data[j], FX_IL)))&0xFFFFFFFF);
-    // write_mem(&fftHW_lmem[SYNC_VAR_SIZE+j], val_64);
-    write_mem(&fftHW_li_mem[j], val_64);
+  // for (int j = 0; j < 2 * RADAR_N; j+=2) {
+  //   //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
+  //   //BM
+  //   // [j] [j+1]
+  //   // [j+1, j]
+  //   // fftHW_lmem[j] = float2fx(data[j], FX_IL);
+  //   uint64_t val_64 = float2fx(data[j+1], FX_IL);
+  //   val_64 = val_64 << 32;
+  //   val_64 |= (((uint64_t)(float2fx(data[j], FX_IL)))&0xFFFFFFFF);
+  //   // write_mem(&fftHW_lmem[SYNC_VAR_SIZE+j], val_64);
+  //   write_mem(&fftHW_li_mem[j], val_64);
 
-    SDEBUG(if (j < 64) { 
-	    printf("FFT_IN_DATA %u : %f\n", j, data[j]);
-      });
-  }
+  //   SDEBUG(if (j < 64) { 
+	//     printf("FFT_IN_DATA %u : %f\n", j, data[j]);
+  //     });
+  // }
  #ifdef INT_TIME
 
   temp2 = get_counter();
@@ -2314,23 +2357,42 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   fft_cycles += temp2-temp;
   temp = get_counter();
  #endif // INT_TIME
-  //for (int j = 0; j < 2 * fftHW_len; j++) {
-    //BM
-  // for (int j = 0; j < 2 * RADAR_N; j++) {
-  for (int j = 0; j < 2 * RADAR_N; j+=2) {
-    // data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
-    //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
 
-    uint64_t val_64 = read_mem(&fftHW_lo_mem[j]); // SYNC_VAR_SIZE+acc_len+
-    // uint64_t val_64 = read_mem(&fftHW_lmem[SYNC_VAR_SIZE+acc_len+j]);
+	dst = fftHW_lo_mem;
 
-    data[j] = (float)fx2float((int)(val_64&0xFFFFFFFF), FX_IL);
-    data[j+1] = (float)fx2float((int)((val_64>>32)&0xFFFFFFFF), FX_IL);
+  for (unsigned niSample = 0; niSample < InitLength; niSample+=2, dst+=2)
+	{
+		DstData.value_64 = read_mem((void *) dst);
 
-    SDEBUG(if (j < 64) { 
-	    printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
-      });
-  }
+		SrcData.value_32_1 = fx2float(DstData.value_32_1, FX_IL);
+		SrcData.value_32_2 = fx2float(DstData.value_32_2, FX_IL);
+
+    __temp = (pow(SrcData.value_32_1,2) + pow(SrcData.value_32_2,2))/100.0;
+    if (__temp > max_psd) {
+      max_psd = __temp;
+      max_index = niSample/2;
+    }
+	}
+ 
+  update_fft_prod_rdy();
+
+  // //for (int j = 0; j < 2 * fftHW_len; j++) {
+  //   //BM
+  // // for (int j = 0; j < 2 * RADAR_N; j++) {
+  // for (int j = 0; j < 2 * RADAR_N; j+=2) {
+  //   // data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
+  //   //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
+
+  //   uint64_t val_64 = read_mem(&fftHW_lo_mem[j]); // SYNC_VAR_SIZE+acc_len+
+  //   // uint64_t val_64 = read_mem(&fftHW_lmem[SYNC_VAR_SIZE+acc_len+j]);
+
+  //   data[j] = (float)fx2float((int)(val_64&0xFFFFFFFF), FX_IL);
+  //   data[j+1] = (float)fx2float((int)((val_64>>32)&0xFFFFFFFF), FX_IL);
+
+  //   SDEBUG(if (j < 64) { 
+	//     printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
+  //     });
+  // }
  #ifdef INT_TIME
   temp2 = get_counter();
   fft_cvtout_cycles += temp2-temp;
@@ -2360,17 +2422,28 @@ DEBUG(printf("Before fft_in_hw: wait for cons rdy\n"));
   calc_cycles += temp2 - fft_calc_start;
   temp = get_counter();
  #endif // INT_TIME
-  float max_psd = 0;
-  unsigned int max_index = 0;
-  unsigned int i;
-  float __temp;
-  for (i=0; i < RADAR_N; i++) {
-    __temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
+
+#ifndef HW_FFT
+	src = data;
+
+  for (unsigned niSample = 0; niSample < InitLength; niSample+=2, src+=2)
+	{
+		SrcData.value_64 = read_mem((void *) src);
+    __temp = (pow(SrcData.value_32_1,2) + pow(SrcData.value_32_2,2))/100.0;
     if (__temp > max_psd) {
       max_psd = __temp;
-      max_index = i;
+      max_index = niSample/2;
     }
-  }
+	}
+#endif
+
+  // for (i=0; i < RADAR_N; i++) {
+  //   __temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
+  //   if (__temp > max_psd) {
+  //     max_psd = __temp;
+  //     max_index = i;
+  //   }
+  // }
   float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
   //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
   // printf("fft_cvtin_cycles = %llu fft_br_cycles = %llu fft_cvtout_cycles = %llu fft_cycles=%llu calc_cycles=%llu\n",fft_cvtin_cycles,fft_br_cycles,fft_cvtout_cycles, fft_cycles, calc_cycles);

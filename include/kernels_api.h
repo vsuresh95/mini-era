@@ -75,6 +75,7 @@ typedef struct {
   unsigned int msg_id;
   ofdm_param   ofdm_p;
   frame_param  frame_p;
+  uint64_t dummy_var;
   uint8_t      in_bits[MAX_ENCODED_BITS];
 } vit_dict_entry_t;
 

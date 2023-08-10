@@ -50,6 +50,17 @@
 
 #include "verbose.h"
 
+#include "coh_func.h"
+
+typedef union
+{
+  struct
+  {
+    uint8_t value_8[8];
+  };
+  int64_t value_64;
+} vit_union_t;
+
 #define VIT_UPDATE_VAR_SIZE 8
 #ifdef HW_VIT
   #include "mini-era.h"
@@ -912,9 +923,27 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 #ifdef USE_VIT_SENSOR
 	imi += MAX_ENCODED_BITS;
 #else
-    for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
-      inMemory[imi++] = depunctured[ti];
+    unsigned InitLength = MAX_ENCODED_BITS;
+    vit_union_t SrcData;
+    uint8_t* src;
+    vit_union_t DstData;
+    uint8_t* dst;
+
+    src = depunctured;
+    dst = &(inMemory[imi]);
+
+    for (unsigned niSample = 0; niSample < InitLength; niSample+=8, src+=8, dst+=8)
+    {
+      SrcData.value_64 = read_mem((void *) src);
+      write_mem((void *) dst, DstData.value_64);
     }
+
+
+    imi += MAX_ENCODED_BITS;
+
+    // for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
+    //   inMemory[imi++] = depunctured[ti];
+    // }
 #endif
 
 	#ifdef INT_TIME
