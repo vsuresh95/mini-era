@@ -763,7 +763,9 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     if (imi != 70) { printf("ERROR : imi = %u and should be 70\n", imi); }
     // imi = 70
     imi += 2; // Padding
-
+#ifdef USE_VIT_SENSOR
+	imi += MAX_ENCODED_BITS;
+#else
     unsigned InitLength = MAX_ENCODED_BITS;
     vit_union_t Data;
     uint8_t* src;
@@ -779,6 +781,7 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     }
 
     imi += MAX_ENCODED_BITS;
+#endif	
 
     // for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
     //   inMemory[imi++] = depunctured[ti];
@@ -815,8 +818,6 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     vitHW_desc.cbps = ofdm->n_cbps;
     vitHW_desc.ntraceback = d_ntraceback;
     vitHW_desc.data_bits = frame->n_data_bits;
-    vitHW_desc.in_length = 24852;
-    vitHW_desc.out_length = 18585;
     // printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u frame.dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits,  frame->n_data_bits);
     do_decoding_hw(&vitHW_fd, &vitHW_desc);
 #else

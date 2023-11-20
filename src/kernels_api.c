@@ -274,6 +274,47 @@ static void init_vit_parameters()
 
 #endif
 
+#ifdef USE_VIT_SENSOR
+char VITDMA_DEVNAME[128];
+int vitDMA_fd;
+contig_handle_t vitDMA_mem;
+vitHW_token_t* vitDMA_lmem;
+vitHW_token_t* input_vit_mem;
+size_t vitDMA_len;
+size_t vitDMA_size;
+struct sensor_dma_stratus_access vitDMA_desc;
+
+static void init_vitdma_parameters()
+{
+	if (DMA_WORD_PER_BEAT(sizeof(vitHW_token_t)) == 0) {
+		vitDMA_len = ENC_BYTES;
+	} else {
+		vitDMA_len = round_up(ENC_BYTES, DMA_WORD_PER_BEAT(sizeof(vitHW_token_t)));
+	}
+	vitDMA_size = vitDMA_len * sizeof(vitHW_token_t);
+}
+#endif
+#ifdef USE_FFT_SENSOR
+char FFTDMA_DEVNAME[128];
+int fftDMA_fd;
+contig_handle_t fftDMA_mem;
+fftHW_native_t* fftDMA_lmem;
+fftHW_native_t* input_rad_mem;
+size_t fftDMA_len;
+size_t fftDMA_size;
+struct sensor_dma_stratus_access fftDMA_desc;
+
+static void init_fftdma_parameters()
+{
+  int len = 0x1<<fft_logn_samples;
+	if (DMA_WORD_PER_BEAT(sizeof(fftHW_token_t)) == 0) {
+		fftDMA_len = 2 * len;
+	} else {
+		fftDMA_len = round_up(2 * len, DMA_WORD_PER_BEAT(sizeof(fftHW_token_t)));
+	}
+	fftDMA_size = fftDMA_len * sizeof(fftHW_token_t);
+}
+#endif
 
 #ifdef HW_FFT
 
@@ -315,7 +356,7 @@ static void init_fft_parameters()
 	fftHW_out_len =  fftHW_out_words_adj;
 	fftHW_in_size = fftHW_in_len * sizeof(fftHW_token_t);
 	fftHW_out_size = fftHW_out_len * sizeof(fftHW_token_t);
-	fftHW_out_offset = 0;
+	fftHW_out_offset = fftHW_in_len;
 	fftHW_size = (fftHW_out_offset * sizeof(fftHW_token_t)) + fftHW_out_size;
 }
 #endif
@@ -434,6 +475,59 @@ status_t init_rad_kernel(char* dict_fn)
     }
   }
 
+#ifdef USE_FFT_SENSOR
+  // Find the device for FFT sensor
+  snprintf(FFTDMA_DEVNAME, 128, "/dev/sensor_dma_stratus.0");
+  fftDMA_fd = open(FFTDMA_DEVNAME, O_RDWR, 0);
+  if (fftDMA_fd < 0) {
+    fprintf(stderr, "Error: cannot open %s", FFTDMA_DEVNAME);
+    exit(EXIT_FAILURE);
+  }
+
+  printf("  Copying radar data to sensor scratchpad\n");
+
+  init_fftdma_parameters();
+
+  // Allocate a memory pointer for DMA initialization
+  fftDMA_lmem = contig_alloc(fftDMA_size, &fftDMA_mem);
+
+  // Configure generic sensor descriptor fields.
+  fftDMA_desc.esp.run = true;
+  fftDMA_desc.esp.coherence = ACC_COH_RECALL; //coherence;
+  fftDMA_desc.esp.p2p_store = 0;
+  fftDMA_desc.esp.p2p_nsrcs = 0;
+  fftDMA_desc.esp.contig = contig_to_khandle(fftDMA_mem);
+
+  fftDMA_desc.src_offset = 0;
+  fftDMA_desc.dst_offset = 0;
+
+  size_t sample_set_size = fftDMA_len * sizeof(fftHW_native_t);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // copy radar data to FFT sensor scratchpad
+  for (int i = 0; i < radar_dict_items_per_set; i++)
+  {
+    input_rad_mem = &(the_radar_return_dict[0][i].return_data[0]);
+
+    // Configure the location to read from and the offset to write to.
+    fftDMA_desc.rd_wr_enable = 0;
+    fftDMA_desc.rd_sp_offset = i*sample_words;
+    fftDMA_desc.rd_size = sample_words;
+    fftDMA_desc.dma_src_offset = 0;
+
+    // Initialize the radar set in the lmem location
+    for(unsigned niSample = 0; niSample < fftDMA_len; niSample++) {
+      fftDMA_lmem[niSample] = input_rad_mem[niSample];
+    }
+
+    // Invoke the sensor to transfer to scratchpad
+    if (ioctl(fftDMA_fd, SENSOR_DMA_STRATUS_IOC_ACCESS, fftDMA_desc)) {
+      perror("IOCTL:");
+      exit(EXIT_FAILURE);
+    }
+  }
+#endif // if USE_FFT_SENSOR
+
  #ifdef HW_FFT
   init_fft_parameters();
  #if (USE_FFT_ACCEL_TYPE == 1)
@@ -499,7 +593,7 @@ status_t init_rad_kernel(char* dict_fn)
   // fftHW_desc.do_inverse   = 0;
  #endif
   fftHW_desc.src_offset = 0;
-  fftHW_desc.dst_offset = 0;
+  fftHW_desc.dst_offset = fftHW_in_size;
 #endif
 
   return success;
@@ -622,6 +716,60 @@ status_t init_vit_kernel(char* dict_fn)
     hist_total_objs[i] = 0;
   }
 
+
+#ifdef USE_VIT_SENSOR
+  // Find the device for VIT sensor
+  snprintf(VITDMA_DEVNAME, 128, "/dev/sensor_dma_stratus.1");
+  vitDMA_fd = open(VITDMA_DEVNAME, O_RDWR, 0);
+  if (vitDMA_fd < 0) {
+    fprintf(stderr, "Error: cannot open %s", VITDMA_DEVNAME);
+    exit(EXIT_FAILURE);
+  }
+
+  printf("  Copying Viterbi data to sensor scratchpad\n");
+
+  init_vitdma_parameters();
+
+  // Allocate a memory pointer for DMA initialization
+  vitDMA_lmem = contig_alloc(vitDMA_size, &vitDMA_mem);
+
+  // Configure generic sensor descriptor fields.
+  vitDMA_desc.esp.run = true;
+  vitDMA_desc.esp.coherence = ACC_COH_RECALL; //coherence;
+  vitDMA_desc.esp.p2p_store = 0;
+  vitDMA_desc.esp.p2p_nsrcs = 0;
+  vitDMA_desc.esp.contig = contig_to_khandle(vitDMA_mem);
+
+  vitDMA_desc.src_offset = 0;
+  vitDMA_desc.dst_offset = 0;
+  
+  size_t sample_set_size = vitDMA_len * sizeof(uint8_t);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // copy radar data to VIT sensor scratchpad
+  for (int i = 8; i < 12; i++)
+  {
+    input_vit_mem = &(the_viterbi_trace_dict[i].in_bits[0]);
+
+    // Configure the location to read from the offset to write to.
+    vitDMA_desc.rd_wr_enable = 0;
+    vitDMA_desc.rd_sp_offset = (i-8)*sample_words;
+    vitDMA_desc.rd_size = sample_words;
+    vitDMA_desc.dma_src_offset = 0;
+
+    // Initialize the radar set in the lmem location
+    for(unsigned niSample = 0; niSample < vitDMA_len; niSample++) {
+      vitDMA_lmem[niSample] = input_vit_mem[niSample];
+    }
+
+    // Invoke the sensor to transfer to scratchpad
+    if (ioctl(vitDMA_fd, SENSOR_DMA_STRATUS_IOC_ACCESS, vitDMA_desc)) {
+      perror("IOCTL:");
+      exit(EXIT_FAILURE);
+    }
+  }
+#endif // if USE_VIT_SENSOR
+
 #ifdef HW_VIT
   init_vit_parameters();
   snprintf(VIT_DEVNAME, 128, "/dev/vitdodec_stratus.%u", use_device_number);
@@ -641,24 +789,12 @@ status_t init_vit_kernel(char* dict_fn)
   vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
   DEBUG(printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem));
 
-  // vitHW_desc.esp.coherence = ACC_COH_NONE;
-  // vitHW_desc.cbps = in_cbps;
-  // vitHW_desc.ntraceback = 5; //d_ntraceback;
-  // vitHW_desc.data_bits = 288; //24852;
-  // vitHW_desc.in_length = 24852;
-  // vitHW_desc.out_length = 18585;
-
-
   vitHW_desc.esp.run = true;
   vitHW_desc.esp.coherence = ACC_COH_FULL;
-  // vitHW_desc.esp.coherence = ACC_COH_NONE;
-  //BM
-  // vitHW_desc.in_length = ENC_BYTES;
-  // vitHW_desc.out_length = 18585; //240;
   vitHW_desc.esp.p2p_store = 0;
   vitHW_desc.esp.p2p_nsrcs = 0;
-  vitHW_desc.esp.start_stop = 0;
-  // vitHW_desc.esp.p2p_srcs = {"", "", "", ""};
+  vitHW_desc.src_offset = 0;
+  vitHW_desc.dst_offset = 0;
   vitHW_desc.esp.contig = contig_to_khandle(vitHW_mem);
 
 #endif
@@ -921,6 +1057,36 @@ radar_dict_entry_t* iterate_rad_kernel(vehicle_state_t vs)
   unsigned tr_val = nearest_dist[vs.lane] / RADAR_BUCKET_DISTANCE;  // The proper message for this time step and car-lane
   radar_inputs_histogram[crit_fft_samples_set][tr_val]++;
   //printf("Incrementing radar_inputs_histogram[%u][%u] to %u\n", crit_fft_samples_set, tr_val, radar_inputs_histogram[crit_fft_samples_set][tr_val]);
+
+#ifdef USE_FFT_SENSOR
+  // Configure generic sensor descriptor fields - reuse the 
+  // memory from earlier, which we will point to main.c.
+  fftDMA_desc.esp.run = true;
+  fftDMA_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  fftDMA_desc.esp.p2p_store = 0;
+  fftDMA_desc.esp.p2p_nsrcs = 0;
+  fftDMA_desc.esp.contig = contig_to_khandle(fftDMA_mem);
+
+  fftDMA_desc.src_offset = 0;
+  fftDMA_desc.dst_offset = 0;
+
+  size_t sample_set_size = fftDMA_len * sizeof(fftHW_native_t);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // copy radar data from FFT sensor scratchpad to fftDMA_mem.
+  // Configure the location to write and the offset to read to.
+  fftDMA_desc.rd_wr_enable = 1;
+  fftDMA_desc.wr_sp_offset = tr_val*sample_words;
+  fftDMA_desc.wr_size = sample_words;
+  fftDMA_desc.dma_dst_offset = 0;
+
+  // Invoke the sensor to transfer to scratchpad
+  if (ioctl(fftDMA_fd, SENSOR_DMA_STRATUS_IOC_ACCESS, fftDMA_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
+#endif // if USE_FFT_SENSOR
+
   return &(the_radar_return_dict[crit_fft_samples_set][tr_val]);
 }
   
@@ -1058,6 +1224,36 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
     trace_msg = &(the_viterbi_trace_dict[3 + msg_offset]);
     break;
   }
+
+#ifdef USE_VIT_SENSOR
+  // Configure generic sensor descriptor fields - reuse the 
+  // memory from earlier, which we will point to main.c.
+  vitDMA_desc.esp.run = true;
+  vitDMA_desc.esp.coherence = ACC_COH_FULL; //coherence;
+  vitDMA_desc.esp.p2p_store = 0;
+  vitDMA_desc.esp.p2p_nsrcs = 0;
+  vitDMA_desc.esp.contig = contig_to_khandle(vitHW_mem);
+
+  vitDMA_desc.src_offset = 0;
+  vitDMA_desc.dst_offset = 0;
+  
+  size_t sample_set_size = vitDMA_len * sizeof(uint8_t);
+  unsigned sample_words = sample_set_size/sizeof(int64_t);
+
+  // copy radar data from VIT sensor scratchpad to vitDMA_mem.
+  // Configure the location to write and the offset to read to.
+  vitDMA_desc.rd_wr_enable = 1;
+  vitDMA_desc.wr_sp_offset = tr_val*sample_words;
+  vitDMA_desc.wr_size = sample_words;
+  vitDMA_desc.dma_dst_offset = 0;
+
+  // Invoke the sensor to transfer to scratchpad
+  if (ioctl(vitDMA_fd, SENSOR_DMA_STRATUS_IOC_ACCESS, vitDMA_desc)) {
+    perror("IOCTL:");
+    exit(EXIT_FAILURE);
+  }
+#endif // if USE_VIT_SENSOR
+
   DEBUG(printf(" VIT: Using msg %u Id %u : %s \n", trace_msg->msg_num, trace_msg->msg_id, message_names[trace_msg->msg_id]));
   return trace_msg;
 }

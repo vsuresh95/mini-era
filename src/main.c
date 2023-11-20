@@ -21,6 +21,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "mini-era.h"
 #include "kernels_api.h"
 #include "sim_environs.h"
 #include "getopt.h"
@@ -77,6 +78,10 @@ extern uint64_t decode_total_cycles;
 extern uint64_t descram_cycles;
 extern uint64_t dodec_input_cycles;
 
+#endif
+
+#ifdef USE_FFT_SENSOR
+extern fftHW_native_t* fftDMA_lmem;
 #endif
 
 char cv_dict[256]; 
@@ -448,6 +453,7 @@ int main(int argc, char *argv[])
     temp = get_counter();
    #endif
     distance_t rdict_dist = rdentry_p->distance;
+#ifndef USE_FFT_SENSOR
     float * ref_in = rdentry_p->return_data;
     float radar_inputs[2*RADAR_N];
     SDEBUG(printf("\nCopying radar inputs...\n"));
@@ -457,6 +463,15 @@ int main(int argc, char *argv[])
        if (ii < 64) { printf("radar_inputs[%2u] = %f  %f\n", radar_inputs[ii], ref_in[ii]); }
       #endif
     }
+#else
+    float *radar_inputs;
+    if (!fftDMA_lmem) {
+      printf("Error: Sensor buffer not initialized.\n");
+      return 1;
+    } else {
+      radar_inputs = fftDMA_lmem;
+    }
+#endif
 
    #ifdef TIME
     temp2 = get_counter();

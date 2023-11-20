@@ -17,16 +17,30 @@
 
 #include "coh_func.h"
 
+struct sensor_dma_stratus_access {
+	struct esp_access esp;
+	/* <<--regs-->> */
+	unsigned rd_sp_offset;
+	unsigned rd_wr_enable;
+	unsigned wr_size;
+	unsigned wr_sp_offset;
+	unsigned rd_size;
+	unsigned dma_dst_offset;
+	unsigned dma_src_offset;
+	unsigned src_offset;
+	unsigned dst_offset;
+};
+
+#define SENSOR_DMA_STRATUS_IOC_ACCESS _IOW ('S', 0, struct sensor_dma_stratus_access)
+
 struct vitdodec_access {
 	struct esp_access esp;
 	/* <<--regs-->> */
 	unsigned cbps;
 	unsigned ntraceback;
 	unsigned data_bits;
-	// unsigned src_offset;
-	// unsigned dst_offset;
-    unsigned in_length ;
-    unsigned out_length;
+	unsigned src_offset;
+	unsigned dst_offset;
 };
 
 #define VITDODEC_IOC_ACCESS	_IOW ('S', 0, struct vitdodec_access)

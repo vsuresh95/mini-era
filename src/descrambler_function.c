@@ -66,6 +66,7 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 
 	// find the initial state of LFSR (linear feedback shift register: 7 bits) from first 7 input bits
 	SrcData.value_64 = read_mem((void *) src);
+	src += 8;
 
 	for(int i = 0; i < 7; i++)
 	{
