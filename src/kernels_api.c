@@ -55,6 +55,8 @@ static unsigned DMA_WORD_PER_BEAT(unsigned _st)
  #include "read_trace.h"
 #endif
 
+#define ENC_BYTES 17408
+
 extern unsigned time_step;
 
 unsigned use_device_number = 0; // Default to /dev/*_stratus.0
@@ -69,7 +71,7 @@ bool_t output_viz_trace = true;
 #else
 bool_t output_viz_trace = false;
 #endif
-unsigned fft_logn_samples = 14; // Defaults to 16k samples
+// unsigned fft_logn_samples = 10; //14; // Defaults to 16k samples
 
 unsigned total_obj; // Total non-'N' obstacle objects across all lanes this time step
 unsigned obj_in_lane[NUM_LANES]; // Number of obstacle objects in each lane this time step (at least one, 'n')
@@ -89,6 +91,63 @@ float IMPACT_DISTANCE = 50.0; // Minimum distance at which an obstacle "impacts"
 /* These are types, functions, etc. required for VITERBI */
 #include "viterbi_flat.h"
 
+
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
+
+
+#if defined(HW_FFT) || defined(HW_VIT) 
+inline void write_mem (void* dst, int64_t value_64)
+{
+	__asm__ volatile (
+		"mv t0, %0;"
+		"mv t1, %1;"
+		".word " QU(WRITE_CODE)
+		:
+		: "r" (dst), "r" (value_64)
+		: "t0", "t1", "memory"
+	);
+}
+
+/* Read from the memory*/
+inline int64_t read_mem (void* dst)
+{
+	int64_t value_64;
+
+	__asm__ volatile (
+		"mv t0, %1;"
+		".word " QU(READ_CODE) ";"
+		"mv %0, t1"
+		: "=r" (value_64)
+		: "r" (dst)
+		: "t0", "t1", "memory"
+	);
+
+	return value_64;
+}
+
+#endif
 
 
 #ifndef BYPASS_KERAS_CV_CODE
@@ -170,6 +229,11 @@ unsigned viterbi_messages_histogram[VITERBI_MSG_LENGTHS][NUM_MESSAGES];
 unsigned total_msgs = 0; // Total messages decoded during the full run
 unsigned bad_decode_msgs = 0; // Total messages decoded incorrectly during the full run
 
+#ifdef INT_TIME
+uint64_t decode_total_cycles = 0LL;
+uint64_t descram_cycles = 0LL;
+#endif
+
 #ifdef HW_VIT
 // These are Viterbi Harware Accelerator Variales, etc.
 char VIT_DEVNAME[128];
@@ -237,7 +301,9 @@ const float FFT_ERR_TH = 0.05;
 /* User-defined code */
 static void init_fft_parameters()
 {
-	int len = 0x1<<14;
+	// int len = 0x1<<14;
+	// int len = 0x1<<LOGN_SAMPLES;
+  int len = 0x1<<fft_logn_samples;
 	if (DMA_WORD_PER_BEAT(sizeof(fftHW_token_t)) == 0) {
 		fftHW_in_words_adj  = 2 * len;
 		fftHW_out_words_adj = 2 * len;
@@ -315,7 +381,7 @@ status_t init_rad_kernel(char* dict_fn)
 	exit(-2);
       }
 	
-      printf("  Reading rad dictionary set %u entry %u : %u %u %f\n", si, di, entry_id, entry_log_nsamples, entry_dist);
+      DEBUG(printf("  Reading rad dictionary set %u entry %u : %u %u %f\n", si, di, entry_id, entry_log_nsamples, entry_dist));
       the_radar_return_dict[si][di].index = tot_index++;  // Set, and increment total index
       the_radar_return_dict[si][di].set = si;
       the_radar_return_dict[si][di].index_in_set = di;
@@ -377,17 +443,17 @@ status_t init_rad_kernel(char* dict_fn)
  #endif
   printf("Open device %s\n", FFT_DEVNAME);
   #if (USE_FFT_FX == 64)
-   printf(" typedef unsigned long long token_t\n");
-   printf(" typedef double native_t\n");
-   printf(" #define fx2float fixed64_to_double\n");
-   printf(" #define float2fx double_to_fixed64\n");
+   DEBUG(printf(" typedef unsigned long long token_t\n"));
+   DEBUG(printf(" typedef double native_t\n"));
+   DEBUG(printf(" #define fx2float fixed64_to_double\n"));
+   DEBUG(printf(" #define float2fx double_to_fixed64\n"));
   #elif (USE_FFT_FX == 32)
-   printf(" typedef int token_t\n");
-   printf(" typedef float native_t\n");
-   printf(" #define fx2float fixed32_to_float\n");
-   printf(" #define float2fx float_to_fixed32\n");
+   DEBUG(printf(" typedef int token_t\n"));
+   DEBUG(printf(" typedef float native_t\n"));
+   DEBUG(printf(" #define fx2float fixed32_to_float\n"));
+   DEBUG(printf(" #define float2fx float_to_fixed32\n"));
   #endif /* FFT_FX_WIDTH */
-  printf(" #define FX_IL %u\n", FX_IL);
+  DEBUG(printf(" #define FX_IL %u\n", FX_IL));
 
   fftHW_fd = open(FFT_DEVNAME, O_RDWR, 0);
   if (fftHW_fd < 0) {
@@ -395,7 +461,7 @@ status_t init_rad_kernel(char* dict_fn)
     exit(EXIT_FAILURE);
   }
 
-  printf("Allocate hardware buffer of size %zu\n", fftHW_size);
+  DEBUG(printf("Allocate hardware buffer of size %zu\n", fftHW_size));
   fftHW_lmem = contig_alloc(fftHW_size, &fftHW_mem);
   if (fftHW_lmem == NULL) {
     fprintf(stderr, "Error: cannot allocate %zu contig bytes", fftHW_size);
@@ -404,30 +470,33 @@ status_t init_rad_kernel(char* dict_fn)
 
   fftHW_li_mem = &(fftHW_lmem[0]);
   fftHW_lo_mem = &(fftHW_lmem[fftHW_out_offset]);
-  printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem);
+  DEBUG(printf("Set fftHW_li_mem = %p  AND fftHW_lo_mem = %p\n", fftHW_li_mem, fftHW_lo_mem));
 
   fftHW_desc.esp.run = true;
-  fftHW_desc.esp.coherence = ACC_COH_NONE;
+  // fftHW_desc.esp.coherence = ACC_COH_NONE;
+  fftHW_desc.esp.coherence = ACC_COH_FULL;
   fftHW_desc.esp.p2p_store = 0;
   fftHW_desc.esp.p2p_nsrcs = 0;
-  //fftHW_desc.esp.p2p_srcs = {"", "", "", ""};
+  // fftHW_desc.esp.p2p_srcs = {"", "", "", ""};
   fftHW_desc.esp.contig = contig_to_khandle(fftHW_mem);
+  fftHW_desc.esp.start_stop = 0;
 
  #if (USE_FFT_ACCEL_TYPE == 1) // fft_stratus
+
   #ifdef HW_FFT_BITREV
   fftHW_desc.do_bitrev  = FFTHW_DO_BITREV;
   #else
   fftHW_desc.do_bitrev  = FFTHW_NO_BITREV;
-  #endif
+  #endif /* BITREV */
   //fftHW_desc.len      = fftHW_len;
   fftHW_desc.log_len    = fft_logn_samples; // fftHW_log_len;
- #elif (USE_FFT_ACCEL_TYPE == 2) // fft2_stratus
+ #elif (USE_FFT_ACCEL_TYPE == 2) // fft2_stratus 
   fftHW_desc.scale_factor = 0;
   fftHW_desc.logn_samples = fft_logn_samples;
   fftHW_desc.num_ffts     = 1;
   fftHW_desc.do_inverse   = 0;
   fftHW_desc.do_shift     = 0;
-  fftHW_desc.do_inverse   = 0;
+  // fftHW_desc.do_inverse   = 0;
  #endif
   fftHW_desc.src_offset = 0;
   fftHW_desc.dst_offset = 0;
@@ -476,10 +545,11 @@ status_t init_vit_kernel(char* dict_fn)
     return error;
   }
 
+  int in_cbps;
   // Read in each dictionary item
   for (int i = 0; i < num_viterbi_dictionary_items; i++) 
   {
-    printf("  Reading vit dictionary entry %u\n", i);
+    DEBUG(printf("  Reading vit dictionary entry %u\n", i));
 
     int mnum, mid;
     if (fscanf(dictF, "%d %d\n", &mnum, &mid) != 2) {
@@ -496,7 +566,7 @@ status_t init_vit_kernel(char* dict_fn)
     the_viterbi_trace_dict[i].msg_num = mnum;
     the_viterbi_trace_dict[i].msg_id = mid;
 
-    int in_bpsc, in_cbps, in_dbps, in_encoding, in_rate; // OFDM PARMS
+    int in_bpsc,  in_dbps, in_encoding, in_rate; // OFDM PARMS //in_cbps,
     if (fscanf(dictF, "%d %d %d %d %d\n", &in_bpsc, &in_cbps, &in_dbps, &in_encoding, &in_rate) != 5) {
       printf("Error reading viterbi kernel dictionary entry %u bpsc, cbps, dbps, encoding and rate info\n", i);
       fclose(dictF);
@@ -555,7 +625,7 @@ status_t init_vit_kernel(char* dict_fn)
 #ifdef HW_VIT
   init_vit_parameters();
   snprintf(VIT_DEVNAME, 128, "/dev/vitdodec_stratus.%u", use_device_number);
-  printf("Open Vit-Do-Decode device %s\n", VIT_DEVNAME);
+  DEBUG(printf("Open Vit-Do-Decode device %s\n", VIT_DEVNAME));
   vitHW_fd = open(VIT_DEVNAME, O_RDWR, 0);
   if(vitHW_fd < 0) {
 	  fprintf(stderr, "Error: cannot open %s", VIT_DEVNAME);
@@ -569,12 +639,26 @@ status_t init_vit_kernel(char* dict_fn)
   }
   vitHW_li_mem = &(vitHW_lmem[0]);
   vitHW_lo_mem = &(vitHW_lmem[vitHW_out_offset]);
-  printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem);
+  DEBUG(printf("Set vitHW_li_mem = %p  AND vitHW_lo_mem = %p\n", vitHW_li_mem, vitHW_lo_mem));
+
+  // vitHW_desc.esp.coherence = ACC_COH_NONE;
+  // vitHW_desc.cbps = in_cbps;
+  // vitHW_desc.ntraceback = 5; //d_ntraceback;
+  // vitHW_desc.data_bits = 288; //24852;
+  // vitHW_desc.in_length = 24852;
+  // vitHW_desc.out_length = 18585;
+
 
   vitHW_desc.esp.run = true;
-  vitHW_desc.esp.coherence = ACC_COH_NONE;
+  vitHW_desc.esp.coherence = ACC_COH_FULL;
+  // vitHW_desc.esp.coherence = ACC_COH_NONE;
+  //BM
+  // vitHW_desc.in_length = ENC_BYTES;
+  // vitHW_desc.out_length = 18585; //240;
   vitHW_desc.esp.p2p_store = 0;
   vitHW_desc.esp.p2p_nsrcs = 0;
+  vitHW_desc.esp.start_stop = 0;
+  // vitHW_desc.esp.p2p_srcs = {"", "", "", ""};
   vitHW_desc.esp.contig = contig_to_khandle(vitHW_mem);
 
 #endif
@@ -601,6 +685,8 @@ status_t init_cv_kernel(char* py_file, char* dict_cv)
     snprintf(the_cv_image_dict[pedestrian][i], 128, "%s/person_%02u.jpg", dict_cv, i);
     snprintf(the_cv_image_dict[truck][i], 128, "%s/truck_%02u.jpg", dict_cv, i);
   }
+
+  #ifdef SUPER_VERBOSE
   for (int i = 0; i < num_label_t; i++) {
     int j = 0;
     printf("the_cv_image_dict[%2u][%2u] = %s\n", i, j, the_cv_image_dict[i][j]);
@@ -608,6 +694,7 @@ status_t init_cv_kernel(char* py_file, char* dict_cv)
       printf("the_cv_image_dict[%2u][%2u] = %s\n", i, j, the_cv_image_dict[i][j]);
     });
   }
+  #endif
 
   // Initialization to run Keras CNN code 
 #ifndef BYPASS_KERAS_CV_CODE
@@ -878,13 +965,13 @@ void post_execute_rad_kernel(unsigned set, unsigned index, distance_t tr_dist, d
   } else if (pct_err < 0.01) {
     hist_pct_errs[set][index][1]++;
   } else if (pct_err < 0.1) {
-    printf("RADAR_LT010_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    DEBUG(printf("RADAR_LT010_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err));
     hist_pct_errs[set][index][2]++;
   } else if (pct_err < 1.00) {
-    printf("RADAR_LT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    DEBUG(printf("RADAR_LT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err));
     hist_pct_errs[set][index][3]++;
   } else {
-    printf("RADAR_GT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err);
+    DEBUG(printf("RADAR_GT100_ERR : %f vs %f : ERROR : %f   PCT_ERR : %f\n", tr_dist, dist, error, pct_err));
     hist_pct_errs[set][index][4]++;
   }
 }
@@ -981,15 +1068,22 @@ message_t execute_vit_kernel(vit_dict_entry_t* trace_msg, int num_msgs)
   message_t msg = num_message_t;
   uint8_t *result;
   char     msg_text[1600]; // Big enough to hold largest message (1500?)
+  int64_t temp, temp2;
   for (int mi = 0; mi < num_msgs; mi++) {
     DEBUG(printf("  Calling the viterbi decode routine for message %u iter %u\n", trace_msg->msg_num, mi));
     viterbi_messages_histogram[vit_msgs_size][trace_msg->msg_id]++; 
     int n_res_char;
+    temp = get_counter();
     result = decode(&(trace_msg->ofdm_p), &(trace_msg->frame_p), &(trace_msg->in_bits[0]), &n_res_char);
+    temp2 = get_counter();
+    decode_total_cycles += temp2-temp;
     // descramble the output - put it in result
     int psdusize = trace_msg->frame_p.psdu_size;
     DEBUG(printf("  Calling the viterbi descrambler routine\n"));
+    temp = get_counter();
     descrambler(result, psdusize, msg_text, NULL /*descram_ref*/, NULL /*msg*/);
+    temp2 = get_counter();
+    descram_cycles += temp2-temp;
 
    #if(0)
     printf(" PSDU %u : Msg : = `", psdusize);
@@ -1042,7 +1136,7 @@ vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t m
        #endif
        )) {
     if (distance <= IMPACT_DISTANCE) {
-      printf("WHOOPS: We've suffered a collision on time_step %u!\n", time_step);
+      DEBUG(printf("WHOOPS: We've suffered a collision on time_step %u!\n", time_step));
       //fprintf(stderr, "WHOOPS: We've suffered a collision on time_step %u!\n", time_step);
       new_vehicle_state.speed = 0.0;
       new_vehicle_state.active = false; // We should add visualizer stuff for this!
@@ -1085,7 +1179,7 @@ vehicle_state_t plan_and_control(label_t label, distance_t distance, message_t m
 	#endif
 	break; /* Stop!!! */
     default:
-      printf(" ERROR  In %s with UNDEFINED MESSAGE: %u\n", lane_names[vehicle_state.lane], message);
+      DEBUG(printf(" ERROR  In %s with UNDEFINED MESSAGE: %u\n", lane_names[vehicle_state.lane], message));
       //exit(-6);
     }
   } else {

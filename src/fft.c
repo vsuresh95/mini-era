@@ -75,7 +75,32 @@
 struct timeval bitrev_stop, bitrev_start;
 uint64_t bitrev_sec  = 0LL;
 uint64_t bitrev_usec = 0LL;
+uint64_t bitrev_cycles = 0LL;
 #endif
+
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
 
 static unsigned int
 _rev (unsigned int v)
@@ -134,12 +159,15 @@ fft(float * data, unsigned int N, unsigned int logn, int sign)
   /* bit reversal */
 #ifdef INT_TIME
   gettimeofday(&bitrev_start, NULL);
+  uint64_t temp = get_counter();
 #endif
   bit_reverse (data, N, logn);
 #ifdef INT_TIME
+  uint64_t temp2 = get_counter();
   gettimeofday(&bitrev_stop, NULL);
   bitrev_sec  += bitrev_stop.tv_sec  - bitrev_start.tv_sec;
   bitrev_usec += bitrev_stop.tv_usec - bitrev_start.tv_usec;
+  bitrev_cycles += temp2 - temp;
 #endif
 
   /* calculation */

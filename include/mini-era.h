@@ -15,14 +15,18 @@
 #include <esp.h>
 #include <esp_accelerator.h>
 
+#include "coh_func.h"
+
 struct vitdodec_access {
 	struct esp_access esp;
 	/* <<--regs-->> */
 	unsigned cbps;
 	unsigned ntraceback;
 	unsigned data_bits;
-	unsigned src_offset;
-	unsigned dst_offset;
+	// unsigned src_offset;
+	// unsigned dst_offset;
+    unsigned in_length ;
+    unsigned out_length;
 };
 
 #define VITDODEC_IOC_ACCESS	_IOW ('S', 0, struct vitdodec_access)

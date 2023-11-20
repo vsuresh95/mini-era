@@ -21,8 +21,35 @@
 #include "base.h"
 #include "utils.h"
 #include "viterbi_parms.h"
+#include "coh_func.h"
 
 typedef unsigned char   uint8_t;
+
+/* Read from the memory*/
+inline int64_t read_mem (void* dst)
+{
+	int64_t value_64;
+
+	__asm__ volatile (
+		"mv t0, %1;"
+		".word " QU(READ_CODE) ";"
+		"mv %0, t1"
+		: "=r" (value_64)
+		: "r" (dst)
+		: "t0", "t1", "memory"
+	);
+
+	return value_64;
+}
+
+typedef union
+{
+  struct
+  {
+    uint8_t value_8[8];
+  };
+  int64_t value_64;
+} vit_union_t;
 
 void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg) //definition
 {
@@ -31,10 +58,18 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 	uint8_t out[output_length];
 	int state = 0; //start
 	int verbose = ((ref != NULL) && (msg != NULL));
+	
+	vit_union_t SrcData;
+	uint8_t* src;
+
+	src = in;
+
 	// find the initial state of LFSR (linear feedback shift register: 7 bits) from first 7 input bits
+	SrcData.value_64 = read_mem((void *) src);
+
 	for(int i = 0; i < 7; i++)
 	{
-		if(*(in+i))
+		if(SrcData.value_8[i])
 		{
 			state |= 1 << (6 - i);
 		}
@@ -50,10 +85,26 @@ void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t
 	int bit;
 	int index = 0;
 	int mod = 0;
-	for(int i = 7; i < (psdusize*8)+16; i++) // 2 bytes more than psdu_size -> convert to bits
 	{
 		feedback = ((!!(state & 64))) ^ (!!(state & 8));
-		bit = feedback ^ (*(in+i) & 0x1);
+		bit = feedback ^ (SrcData.value_8[7] & 0x1);
+		index = 7/8;
+		mod =  7%8;
+		int comp1, comp2, val; //, comp3;
+		comp1 = (bit << mod);
+		val = out[index];
+		comp2 = val | comp1;
+		out[index] =  comp2;
+		//comp3 = out[index];
+		state = ((state << 1) & 0x7e) | feedback;		
+	}
+
+	for(int i = 8; i < (psdusize*8)+16; i++, src++) // 2 bytes more than psdu_size -> convert to bits
+	{
+		if (i % 8 == 0) SrcData.value_64 = read_mem((void *) src);
+
+		feedback = ((!!(state & 64))) ^ (!!(state & 8));
+		bit = feedback ^ (SrcData.value_8[i % 8] & 0x1);
 		index = i/8;
 		mod =  i%8;
 		int comp1, comp2, val; //, comp3;

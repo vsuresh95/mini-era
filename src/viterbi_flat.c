@@ -59,16 +59,84 @@
  extern struct vitdodec_access vitHW_desc;
 
  #include "mini-era.h"
+
 #endif
+
+#include "coh_func.h"
+
+inline void write_mem (void* dst, int64_t value_64)
+{
+	__asm__ volatile (
+		"mv t0, %0;"
+		"mv t1, %1;"
+		".word " QU(WRITE_CODE)
+		:
+		: "r" (dst), "r" (value_64)
+		: "t0", "t1", "memory"
+	);
+}
+
+inline int64_t read_mem (void* dst)
+{
+	int64_t value_64;
+
+	__asm__ volatile (
+		"mv t0, %1;"
+		".word " QU(READ_CODE) ";"
+		"mv %0, t1"
+		: "=r" (value_64)
+		: "r" (dst)
+		: "t0", "t1", "memory"
+	);
+
+	return value_64;
+}
+
+typedef union
+{
+  struct
+  {
+    uint8_t value_8[8];
+  };
+  int64_t value_64;
+} vit_union_t;
+
+
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
 
 #ifdef INT_TIME
 struct timeval dodec_stop, dodec_start;
 uint64_t dodec_sec  = 0LL;
 uint64_t dodec_usec = 0LL;
+uint64_t dodec_cycles = 0LL;
 
 struct timeval depunc_stop, depunc_start;
 uint64_t depunc_sec  = 0LL;
 uint64_t depunc_usec = 0LL;
+uint64_t depunc_cycles = 0LL;
+uint64_t dodec_input_cycles = 0LL;
 #endif
 
 #undef  GENERATE_CHECK_VALUES
@@ -648,13 +716,12 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   reset();
 
 #ifdef INT_TIME
-  gettimeofday(&depunc_start, NULL);
+  int64_t vit_temp_start = get_counter();
 #endif
   uint8_t *depunctured = depuncture(in);
 #ifdef INT_TIME
-  gettimeofday(&depunc_stop, NULL);
-  depunc_sec  += depunc_stop.tv_sec  - depunc_start.tv_sec;
-  depunc_usec += depunc_stop.tv_usec - depunc_start.tv_usec;
+  int64_t vit_temp_stop = get_counter();
+  depunc_cycles += vit_temp_stop - vit_temp_start;
 #endif
 
   DO_VERBOSE({
@@ -679,7 +746,9 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     uint8_t inMemory[24852];  // This is "minimally sized for max entries"
     uint8_t outMemory[18585]; // This is "minimally sized for max entries"
    #endif
-
+	#ifdef INT_TIME
+	int64_t input_time_start = get_counter();
+	#endif
     int imi = 0;
     for (int ti = 0; ti < 2; ti ++) {
       for (int tj = 0; tj < 32; tj++) {
@@ -694,16 +763,39 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     if (imi != 70) { printf("ERROR : imi = %u and should be 70\n", imi); }
     // imi = 70
     imi += 2; // Padding
-    for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
-      inMemory[imi++] = depunctured[ti];
+
+    unsigned InitLength = MAX_ENCODED_BITS;
+    vit_union_t Data;
+    uint8_t* src;
+    uint8_t* dst;
+
+    src = depunctured;
+    dst = &(inMemory[imi]);
+
+    for (unsigned niSample = 0; niSample < InitLength; niSample+=8, src+=8, dst+=8)
+    {
+      Data.value_64 = read_mem((void *) src);
+      write_mem((void *) dst, Data.value_64);
     }
 
+    imi += MAX_ENCODED_BITS;
+
+    // for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
+    //   inMemory[imi++] = depunctured[ti];
+    // }
+
+	#ifdef INT_TIME
+	int64_t input_time_stop = get_counter();
+	dodec_input_cycles += input_time_stop - input_time_start;
+	#endif
     if (imi != 24852) { printf("ERROR : imi = %u and should be 24852\n", imi); }
     // imi = 24862 : OUTPUT ONLY -- DON'T NEED TO SEND INPUTS
     // Reset the output space (for cleaner testing results)
+#ifndef HW_VIT
     for (int ti = 0; ti < (MAX_ENCODED_BITS * 3 / 4); ti ++) {
       outMemory[ti] = 0;
     }
+#endif
 
 #ifdef GENERATE_CHECK_VALUES
     printf("\nINPUTS-TO-DO-DECODING:\n");
@@ -717,22 +809,23 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
     //void do_decoding(int in_n_data_bits, int in_cbps, int in_ntraceback, unsigned char *inMemory)
     //printf("Calling do_decoding: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback);
 #ifdef INT_TIME
-    gettimeofday(&dodec_start, NULL);
+	vit_temp_start = get_counter();
 #endif
 #ifdef HW_VIT
     vitHW_desc.cbps = ofdm->n_cbps;
     vitHW_desc.ntraceback = d_ntraceback;
     vitHW_desc.data_bits = frame->n_data_bits;
-    //printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits);
+    vitHW_desc.in_length = 24852;
+    vitHW_desc.out_length = 18585;
+    // printf(" vitHW_desc.cbps = %u   ntr = %u   dbits = %u frame.dbits = %u\n", vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.data_bits,  frame->n_data_bits);
     do_decoding_hw(&vitHW_fd, &vitHW_desc);
 #else
     // Call the viterbi_butterfly2_generic function using ESP interface
     do_decoding(frame->n_data_bits, ofdm->n_cbps, d_ntraceback, inMemory, outMemory);
 #endif
 #ifdef INT_TIME
-    gettimeofday(&dodec_stop, NULL);
-    dodec_sec  += dodec_stop.tv_sec  - dodec_start.tv_sec;
-    dodec_usec += dodec_stop.tv_usec - dodec_start.tv_usec;
+	vit_temp_stop = get_counter();
+	dodec_cycles += (vit_temp_stop - vit_temp_start);
 #endif
 
 #ifndef HW_VIT
@@ -754,6 +847,11 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
   }
 #ifdef GENERATE_CHECK_VALUES
   printf("LAST-OUTPUT\n\n");
+#endif
+// printf("Viterbi input = %llu comp time = %llu  cycles \n",dodec_input_cycles, dodec_cycles );
+// printf("Frame: data_bits %d  cbps %d ntraceback %d\n", frame->n_data_bits, ofdm->n_cbps, d_ntraceback);
+#ifdef HW_VIT
+// printf(" vitHW_desc.dbits = %u   cbps = %u   ntr = %u in_length = %u out_length = %u\n", vitHW_desc.data_bits, vitHW_desc.cbps, vitHW_desc.ntraceback, vitHW_desc.in_length, vitHW_desc.out_length);
 #endif
 #if HW_VIT
   return vitHW_lo_mem; // outMemory;

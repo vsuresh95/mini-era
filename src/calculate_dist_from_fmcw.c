@@ -9,30 +9,111 @@
 
 #include "calc_fmcw_dist.h"
 
+static inline uint64_t get_counter() {
+    uint64_t t_end = 0;
+#ifndef __linux__
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, mcycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#else
+	__asm__ volatile (
+		"li t0, 0;"
+		"csrr t0, cycle;"
+		"mv %0, t0"
+		: "=r" (t_end)
+		:
+		: "t0"
+	);
+#endif
+	return t_end;
+}
+
+typedef union
+{
+  struct
+  {
+    int value_32_1;
+    int value_32_2;
+  };
+  int64_t value_64;
+} token_union_t;
+
+typedef union
+{
+  struct
+  {
+    float value_32_1;
+    float value_32_2;
+  };
+  int64_t value_64;
+} native_union_t;
+
+#include "coh_func.h"
+
+inline void write_mem (void* dst, int64_t value_64)
+{
+	__asm__ volatile (
+		"mv t0, %0;"
+		"mv t1, %1;"
+		".word " QU(WRITE_CODE)
+		:
+		: "r" (dst), "r" (value_64)
+		: "t0", "t1", "memory"
+	);
+}
+
+/* Read from the memory*/
+inline int64_t read_mem (void* dst)
+{
+	int64_t value_64;
+
+	__asm__ volatile (
+		"mv t0, %1;"
+		".word " QU(READ_CODE) ";"
+		"mv %0, t1"
+		: "=r" (value_64)
+		: "r" (dst)
+		: "t0", "t1", "memory"
+	);
+
+	return value_64;
+}
+
 #ifdef INT_TIME
 struct timeval calc_start, calc_stop;
 uint64_t calc_sec  = 0LL;
 uint64_t calc_usec = 0LL;
+uint64_t calc_cycles = 0LL;
 
 struct timeval fft_stop, fft_start;
 uint64_t fft_sec  = 0LL;
 uint64_t fft_usec = 0LL;
+uint64_t fft_cycles = 0LL;
 
 struct timeval fft_br_stop, fft_br_start;
 uint64_t fft_br_sec  = 0LL;
 uint64_t fft_br_usec = 0LL;
+uint64_t fft_br_cycles = 0LL;
 
 struct timeval fft_cvtin_stop, fft_cvtin_start;
 uint64_t fft_cvtin_sec  = 0LL;
 uint64_t fft_cvtin_usec = 0LL;
+uint64_t fft_cvtin_cycles = 0LL;
 
 struct timeval fft_cvtout_stop, fft_cvtout_start;
 uint64_t fft_cvtout_sec  = 0LL;
 uint64_t fft_cvtout_usec = 0LL;
+uint64_t fft_cvtout_cycles = 0LL;
 
 struct timeval cdfmcw_stop, cdfmcw_start;
 uint64_t cdfmcw_sec  = 0LL;
 uint64_t cdfmcw_usec = 0LL;
+uint64_t cdfmcw_cycles = 0LL;
 #endif
 
 unsigned RADAR_LOGN    = 0;   // Log2 of the number of samples
@@ -75,6 +156,9 @@ void init_calculate_peak_dist(unsigned fft_logn_samples)
 #include "contig.h"
 #include "fixed_point.h"
 #include "mini-era.h"
+
+extern fftHW_token_t* fftHW_li_mem; // Pointer to input memory block
+extern fftHW_token_t* fftHW_lo_mem; // Pointer to output memory block
 
 //#define FFT_DEVNAME  "/dev/fft.0"
 
@@ -143,8 +227,19 @@ static void fft_in_hw(/*unsigned char *inMemory,*/ int *fd, /*contig_handle_t *m
 float calculate_peak_dist_from_fmcw(float* data)
 {
  #ifdef INT_TIME
-  gettimeofday(&calc_start, NULL);
+  int64_t temp, temp2, fft_calc_start;
+  fft_calc_start = get_counter();
  #endif
+
+	unsigned InitLength = 2 * RADAR_N;
+  native_union_t SrcData;
+	float* src;
+	token_union_t DstData;
+	int* dst;
+  float max_psd = 0;
+  unsigned int max_index = 0;
+  unsigned int i;
+  float __temp;
 
 #ifdef HW_FFT
  #ifndef HW_FFT_BITREV
@@ -153,52 +248,79 @@ float calculate_peak_dist_from_fmcw(float* data)
   fft_bit_reverse(data, RADAR_N, RADAR_LOGN);
  #endif // HW_FFT
  #ifdef INT_TIME
-  gettimeofday(&fft_br_stop, NULL);
-  fft_br_sec  += fft_br_stop.tv_sec  - calc_start.tv_sec;
-  fft_br_usec += fft_br_stop.tv_usec - calc_start.tv_usec;
 
-  gettimeofday(&fft_cvtin_start, NULL);
+  temp2 = get_counter();
+  fft_br_cycles += temp2-fft_calc_start;
+  temp = get_counter();
  #endif // INT_TIME
 
-  // convert input to fixed point
-  //for (int j = 0; j < 2 * fftHW_len; j++) {
-  for (int j = 0; j < 2 * RADAR_N; j++) {
-    //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
-    fftHW_lmem[j] = float2fx(data[j], FX_IL);
-    SDEBUG(if (j < 64) { 
-	    printf("FFT_IN_DATA %u : %f\n", j, data[j]);
-      });
-  }
- #ifdef INT_TIME
-  gettimeofday(&fft_cvtin_stop, NULL);
-  fft_cvtin_sec  += fft_cvtin_stop.tv_sec  - fft_cvtin_start.tv_sec;
-  fft_cvtin_usec += fft_cvtin_stop.tv_usec - fft_cvtin_start.tv_usec;
 
-  gettimeofday(&fft_start, NULL);
+	src = data;
+	dst = fftHW_li_mem;
+
+  for (unsigned niSample = 0; niSample < InitLength; niSample+=2, src+=2, dst+=2)
+	{
+		SrcData.value_64 = read_mem((void *) src);
+
+		DstData.value_32_1 = float2fx(SrcData.value_32_1, FX_IL);
+		DstData.value_32_2 = float2fx(SrcData.value_32_2, FX_IL);
+
+		write_mem((void *) dst, DstData.value_64);
+	}
+
+  // // convert input to fixed point
+  // //for (int j = 0; j < 2 * fftHW_len; j++) {
+  // for (int j = 0; j < 2 * RADAR_N; j++) {
+  //   //fftHW_lmem[j] = float2fx((fftHW_native_t) data[j], FX_IL);
+  //   fftHW_lmem[j] = float2fx(data[j], FX_IL);
+  //   SDEBUG(if (j < 64) { 
+	//     printf("FFT_IN_DATA %u : %f\n", j, data[j]);
+  //     });
+  // }
+ #ifdef INT_TIME
+
+  temp2 = get_counter();
+  fft_cvtin_cycles += temp2-temp;
+  temp = get_counter();
  #endif // INT_TIME
   fft_in_hw(&fftHW_fd, &fftHW_desc);
  #ifdef INT_TIME
-  gettimeofday(&fft_stop, NULL);
-  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
-  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
-  gettimeofday(&fft_cvtout_start, NULL);
+  temp2 = get_counter();
+  fft_cycles += temp2-temp;
+  temp = get_counter();
  #endif // INT_TIME
-  //for (int j = 0; j < 2 * fftHW_len; j++) {
-  for (int j = 0; j < 2 * RADAR_N; j++) {
-    data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
-    //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
-    SDEBUG(if (j < 64) { 
-	    printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
-      });
-  }
+
+	dst = fftHW_lo_mem;
+
+  for (unsigned niSample = 0; niSample < InitLength; niSample+=2, dst+=2)
+	{
+		DstData.value_64 = read_mem((void *) dst);
+
+		SrcData.value_32_1 = fx2float(DstData.value_32_1, FX_IL);
+		SrcData.value_32_2 = fx2float(DstData.value_32_2, FX_IL);
+
+    __temp = (pow(SrcData.value_32_1,2) + pow(SrcData.value_32_2,2))/100.0;
+    if (__temp > max_psd) {
+      max_psd = __temp;
+      max_index = niSample/2;
+    }
+	}
+
+  // //for (int j = 0; j < 2 * fftHW_len; j++) {
+  // for (int j = 0; j < 2 * RADAR_N; j++) {
+  //   data[j] = (float)fx2float(fftHW_lmem[j], FX_IL);
+  //   //printf("%u,0x%08x,%f\n", j, fftHW_lmem[j], data[j]);
+  //   SDEBUG(if (j < 64) { 
+	//     printf("FFT_OUT_DATA %u : %f\n", j, data[j]);
+  //     });
+  // }
  #ifdef INT_TIME
-  gettimeofday(&fft_cvtout_stop, NULL);
-  fft_cvtout_sec  += fft_cvtout_stop.tv_sec  - fft_cvtout_start.tv_sec;
-  fft_cvtout_usec += fft_cvtout_stop.tv_usec - fft_cvtout_start.tv_usec;
+  temp2 = get_counter();
+  fft_cvtout_cycles += temp2-temp;
  #endif // INT_TIME
 #else // if HW_FFT
  #ifdef INT_TIME
-  gettimeofday(&fft_start, NULL);
+  temp = get_counter();
  #endif // INT_TIME
   SDEBUG(for (int tj = 0; tj < 64; tj++) {
 	  printf("FFT_IN_DATA %u : %f\n", tj, data[tj]);
@@ -211,38 +333,50 @@ float calculate_peak_dist_from_fmcw(float* data)
   /*   printf("%u,%f\n", j, data[j]); */
   /* } */
  #ifdef INT_TIME
-  gettimeofday(&fft_stop, NULL);
-  fft_sec  += fft_stop.tv_sec  - fft_start.tv_sec;
-  fft_usec += fft_stop.tv_usec - fft_start.tv_usec;
+  int64_t fft_calc_stop = get_counter();
+  fft_cycles += fft_calc_stop-temp;
  #endif // INT_TIME
 #endif // if HW_FFT
 
  #ifdef INT_TIME
-  gettimeofday(&calc_stop, NULL);
-  calc_sec  += calc_stop.tv_sec  - calc_start.tv_sec;
-  calc_usec += calc_stop.tv_usec - calc_start.tv_usec;
-
-  gettimeofday(&cdfmcw_start, NULL);
+  temp2 = get_counter();
+  calc_cycles += temp2 - fft_calc_start;
+  temp = get_counter();
  #endif // INT_TIME
-  float max_psd = 0;
-  unsigned int max_index = 0;
-  unsigned int i;
-  float temp;
-  for (i=0; i < RADAR_N; i++) {
-    temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
-    if (temp > max_psd) {
-      max_psd = temp;
-      max_index = i;
+
+#ifndef HW_FFT
+	src = data;
+
+  for (unsigned niSample = 0; niSample < InitLength; niSample+=2, src+=2)
+	{
+		SrcData.value_64 = read_mem((void *) src);
+    __temp = (pow(SrcData.value_32_1,2) + pow(SrcData.value_32_2,2))/100.0;
+    if (__temp > max_psd) {
+      max_psd = __temp;
+      max_index = niSample/2;
     }
-  }
+	}
+#endif
+
+  // for (i=0; i < RADAR_N; i++) {
+  //   __temp = (pow(data[2*i],2) + pow(data[2*i+1],2))/100.0;
+  //   if (__temp > max_psd) {
+  //     max_psd = __temp;
+  //     max_index = i;
+  //   }
+  // }
   float distance = ((float)(max_index*((float)RADAR_fs)/((float)(RADAR_N))))*0.5*RADAR_c/((float)(RADAR_alpha));
   //printf("Max distance is %.3f\nMax PSD is %4E\nMax index is %d\n", distance, max_psd, max_index);
  #ifdef INT_TIME
-  gettimeofday(&cdfmcw_stop, NULL);
-  cdfmcw_sec  += cdfmcw_stop.tv_sec  - cdfmcw_start.tv_sec;
-  cdfmcw_usec += cdfmcw_stop.tv_usec - cdfmcw_start.tv_usec;
+  temp2 = get_counter();
+  cdfmcw_cycles += temp2 - temp;
  #endif // INT_TIME
   //printf("max_psd = %f  vs %f\n", max_psd, 1e-10*pow(8192,2));
+  
+  #ifdef HW_FFT
+  // printf("fft_cvtin_cycles = %llu fft_br_cycles = %llu fft_cvtout_cycles = %llu fft_cycles=%llu calc_cycles=%llu\n",fft_cvtin_cycles,fft_br_cycles,fft_cvtout_cycles, fft_cycles, calc_cycles);
+  #endif
+
   if (max_psd > RADAR_psd_threshold) {
     return distance;
   } else {
