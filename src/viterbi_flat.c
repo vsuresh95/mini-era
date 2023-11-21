@@ -41,7 +41,7 @@
  #include <unistd.h>
 
  #include "contig.h"
- #define ENC_BYTES 17408
+ #define ENC_BYTES 24852
 #endif
 
 #include "base.h"
@@ -924,9 +924,8 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 	imi += MAX_ENCODED_BITS;
 #else
     unsigned InitLength = MAX_ENCODED_BITS;
-    vit_union_t SrcData;
+    vit_union_t Data;
     uint8_t* src;
-    vit_union_t DstData;
     uint8_t* dst;
 
     src = depunctured;
@@ -934,17 +933,16 @@ uint8_t* decode(ofdm_param *ofdm, frame_param *frame, uint8_t *in, int* n_dec_ch
 
     for (unsigned niSample = 0; niSample < InitLength; niSample+=8, src+=8, dst+=8)
     {
-      SrcData.value_64 = read_mem((void *) src);
-      write_mem((void *) dst, DstData.value_64);
+      Data.value_64 = read_mem((void *) src);
+      write_mem((void *) dst, Data.value_64);
     }
 
-
     imi += MAX_ENCODED_BITS;
+#endif
 
     // for (int ti = 0; ti < MAX_ENCODED_BITS; ti ++) {
     //   inMemory[imi++] = depunctured[ti];
     // }
-#endif
 
 	#ifdef INT_TIME
 	int64_t input_time_stop = get_counter();

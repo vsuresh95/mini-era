@@ -72,7 +72,7 @@ static unsigned DMA_WORD_PER_BEAT(unsigned _st)
 // #define FLT_VALID_FLAG_OFFSET 6
 // #define FLT_READY_FLAG_OFFSET 8
 
-#define ENC_BYTES 17408
+#define ENC_BYTES 24852
 
 #define LOAD_STORE_FLAG_OFFSET 2
 #define NUM_CFG_REG 8
@@ -395,6 +395,7 @@ uint64_t descram_cycles = 0LL;
 void reset_vit_sync(){
 	int n;
 		write_mem(((void*)(vitHW_lmem + VitConsVldFlag)), 0);
+		write_mem(((void*)(vitHW_lmem + VitEndFlag)), 0);
 		write_mem(((void*)(vitHW_lmem + VitConsRdyFlag)), 1);
 		write_mem(((void*)(vitHW_lmem + VitProdRdyFlag)), 1);
 		write_mem(((void*)(vitHW_lmem + VitProdVldFlag)), 0); 
@@ -439,7 +440,7 @@ static void init_vit_parameters()
 
 	VitProdRdyFlag = VIT_SYNC_VAR_SIZE + vitHW_in_words_adj + VIT_READY_FLAG_OFFSET;
 	VitProdVldFlag = VIT_SYNC_VAR_SIZE + vitHW_in_words_adj + VIT_VALID_FLAG_OFFSET;
-  VitEndFlag = VitProdVldFlag + VIT_UPDATE_VAR_SIZE;
+  VitEndFlag = VitConsVldFlag + VIT_UPDATE_VAR_SIZE;
 	VitConsRdyFlag =  VIT_READY_FLAG_OFFSET;
 	VitConsVldFlag =  VIT_VALID_FLAG_OFFSET;
 }
@@ -542,6 +543,7 @@ static void init_fft_parameters()
 inline void reset_sync(){
 	int n;
 		write_mem(((void*)(fftHW_lmem + ConsVldFlag)), 0);
+		write_mem(((void*)(fftHW_lmem + EndFlag)), 0);
 		write_mem(((void*)(fftHW_lmem + ConsRdyFlag)), 1);
 		write_mem(((void*)(fftHW_lmem + ProdRdyFlag)), 1);
 		write_mem(((void*)(fftHW_lmem + ProdVldFlag)), 0); 
@@ -994,6 +996,12 @@ status_t init_rad_kernel(char* dict_fn)
   fftHW_desc.do_inverse   = 0;
   fftHW_desc.do_shift     = 0;
   // fftHW_desc.do_inverse   = 0;
+	fftHW_desc.prod_valid_offset = VALID_FLAG_OFFSET;
+	fftHW_desc.prod_ready_offset = READY_FLAG_OFFSET;
+	fftHW_desc.cons_valid_offset = acc_len + VALID_FLAG_OFFSET;
+	fftHW_desc.cons_ready_offset = acc_len + READY_FLAG_OFFSET;
+	fftHW_desc.input_offset = SYNC_VAR_SIZE;
+	fftHW_desc.output_offset = acc_len + SYNC_VAR_SIZE;
  #endif /* ACCEL_TYPE*/
   // fftHW_desc.src_offset = 0;
   // fftHW_desc.dst_offset = 0;
@@ -1818,7 +1826,7 @@ vit_dict_entry_t* iterate_vit_kernel(vehicle_state_t vs)
   // DMA will write the input data to the same location for the CPU to read.
   // vitHW_lmem[vit_dma_offset + MEM_DST_OFFSET] = SYNC_VAR_SIZE + 72;
   vitdmaHW_lmem = (fftHW_token_t *) &(vitHW_lmem[vit_dma_offset + VIT_MEM_DST_OFFSET]);
-	*vitdmaHW_lmem = SYNC_VAR_SIZE + 72; // (vit_dma_offset + vit_dma_len)/4 + (2 * SYNC_VAR_SIZE);
+	*vitdmaHW_lmem = SYNC_VAR_SIZE + (72/4); // (vit_dma_offset + vit_dma_len)/4 + (2 * SYNC_VAR_SIZE);
 
 	// Size for each transfer is the same.
   // vitHW_lmem[vit_dma_offset + WR_SIZE] = ENC_BYTES/sizeof(int64_t);
