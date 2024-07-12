@@ -96,16 +96,36 @@ struct fftHW_access {
 
 #define NACC 1
 
+// struct fftHW_access {
+// 	struct esp_access esp;
+// 	/* <<--regs-->> */
+// 	unsigned scale_factor;
+// 	unsigned do_inverse;
+// 	unsigned logn_samples;
+// 	unsigned do_shift;
+// 	unsigned num_ffts;
+// 	unsigned src_offset;
+// 	unsigned dst_offset;
+// 	unsigned spandex_reg;
+// };
+
+
 struct fftHW_access {
 	struct esp_access esp;
 	/* <<--regs-->> */
-	unsigned scale_factor;
 	unsigned do_inverse;
 	unsigned logn_samples;
 	unsigned do_shift;
-	unsigned num_ffts;
+	// ASI sync flag offsets
+    unsigned prod_valid_offset;
+    unsigned prod_ready_offset;
+    unsigned cons_valid_offset;
+    unsigned cons_ready_offset;
+    unsigned input_offset;
+    unsigned output_offset;
 	unsigned src_offset;
 	unsigned dst_offset;
+    unsigned spandex_reg;
 };
 #endif
 

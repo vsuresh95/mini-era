@@ -533,7 +533,7 @@ status_t init_rad_kernel(char* dict_fn)
  #if (USE_FFT_ACCEL_TYPE == 1)
   snprintf(FFT_DEVNAME, 128, "/dev/fft_stratus.%u", use_device_number);
  #elif (USE_FFT_ACCEL_TYPE == 2)
-  snprintf(FFT_DEVNAME, 128, "/dev/fft2_stratus.%u", use_device_number);
+  snprintf(FFT_DEVNAME, 128, "/dev/audio_fft_stratus.1");
  #endif
   printf("Open device %s\n", FFT_DEVNAME);
   #if (USE_FFT_FX == 64)
@@ -585,12 +585,18 @@ status_t init_rad_kernel(char* dict_fn)
   //fftHW_desc.len      = fftHW_len;
   fftHW_desc.log_len    = fft_logn_samples; // fftHW_log_len;
  #elif (USE_FFT_ACCEL_TYPE == 2) // fft2_stratus 
-  fftHW_desc.scale_factor = 0;
+  // fftHW_desc.scale_factor = 0; //BM
   fftHW_desc.logn_samples = fft_logn_samples;
-  fftHW_desc.num_ffts     = 1;
+  // fftHW_desc.num_ffts     = 1; //BM
   fftHW_desc.do_inverse   = 0;
   fftHW_desc.do_shift     = 0;
   // fftHW_desc.do_inverse   = 0;
+	fftHW_desc.prod_valid_offset = 0;
+	fftHW_desc.prod_ready_offset = 0;
+	fftHW_desc.cons_valid_offset = 0;
+	fftHW_desc.cons_ready_offset = 0;
+	fftHW_desc.input_offset = 0;
+	fftHW_desc.output_offset = 0;
  #endif
   fftHW_desc.src_offset = 0;
   fftHW_desc.dst_offset = fftHW_in_size;
