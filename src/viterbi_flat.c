@@ -166,13 +166,13 @@ inline uint32_t poll_vitdodec_prod_valid(){
 
 
 inline void update_vitdodec_cons_valid(){//int last
-	// #ifndef ESP
+	// #if (IS_ESP == 0)
 	// __asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 	// void* dst = (void*)(vitHW_lmem+(VitConsVldFlag)+1);
 	// write_mem(dst, last);
 
-	// #ifdef ESP
+	// #if (IS_ESP == 1)
 	// __asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 	__asm__ volatile ("fence w, w");	//release semantics
@@ -182,12 +182,12 @@ inline void update_vitdodec_cons_valid(){//int last
 	// int time_var = 0;
 	// while(time_var<100) time_var++;
 
-	// #ifndef ESP
+	// #if (IS_ESP == 0)
 	// __asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 	// // vitHW_lmem[VitConsVldFlag+VIT_UPDATE_VAR_SIZE] = last;
 
-	// #ifdef ESP
+	// #if (IS_ESP == 1)
 	// __asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 
@@ -195,20 +195,6 @@ inline void update_vitdodec_cons_valid(){//int last
 	__asm__ volatile ("fence w, w");	
 }
 
-
-void update_vitdodec_end(){
-	__asm__ volatile ("fence w, w");	//acquire semantics
-	void* dst = (void*)(vitHW_lmem+(VitEndFlag));
-	int64_t value_64 = 1;
-	write_mem(dst, value_64);
-	dst = (void*)(vitHW_lmem+(VitConsVldFlag));
-	write_mem(dst, value_64);
-	dst = (void*)(vitHW_lmem+(VitProdRdyFlag));
-	write_mem(dst, value_64);
-	int time_var = 0;
-	while(time_var<100) time_var++;
-	__asm__ volatile ("fence w, w");	
-}
 
 inline void update_vitdodec_cons_rdy(){
 	__asm__ volatile ("fence w, w");	//acquire semantics
@@ -244,6 +230,30 @@ inline void update_vitdodec_prod_valid(){
 	// while(time_var<100) time_var++;
 	// vitHW_lmem[VitProdVldFlag] = 0;
 	__asm__ volatile ("fence w, w");	//acquire semantics
+}
+
+void update_vitdodec_end(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(vitHW_lmem+(VitEndFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+	// dst = (void*)(vitHW_lmem+(VitConsVldFlag));
+	// write_mem(dst, value_64);
+	// dst = (void*)(vitHW_lmem+(VitProdRdyFlag));
+	// write_mem(dst, value_64);
+	int time_var = 0;
+	while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");
+
+	while(!poll_vitdodec_cons_rdy());
+	update_vitdodec_cons_rdy();
+
+	update_vitdodec_cons_valid();
+
+	while(!poll_vitdodec_prod_valid());
+	update_vitdodec_prod_valid();
+
+	update_vitdodec_prod_rdy();	
 }
 
 #endif

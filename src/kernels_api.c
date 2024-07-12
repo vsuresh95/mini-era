@@ -228,7 +228,7 @@ uint64_t parse_usec = 0LL;
 
 //COH
 
-#ifdef ESP
+#if (IS_ESP == 1)
 // ESP COHERENCE PROTOCOLS
 spandex_config_t spandex_config;
 #if (COH_MODE == 3)
@@ -521,7 +521,7 @@ static void init_fft_parameters()
 
   ConsRdyFlag = 0*acc_len + READY_FLAG_OFFSET;
 	ConsVldFlag = 0*acc_len + VALID_FLAG_OFFSET;
-  EndFlag     = acc_len + END_FLAG_OFFSET;
+  EndFlag     = 0*acc_len + END_FLAG_OFFSET;
 	ProdRdyFlag = 1*acc_len + READY_FLAG_OFFSET;
 	ProdVldFlag = 1*acc_len + VALID_FLAG_OFFSET;
   #ifdef VERBOSE
@@ -568,13 +568,13 @@ inline uint32_t poll_fft_prod_valid(){
 
 
 inline void update_fft_cons_valid(){
-	// #ifndef ESP
+	// #if (IS_ESP == 1)
 	// __asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 	// void* dst = (void*)(buf+(*cpu_cons_valid_offset)+1);
 	// write_mem(dst, last);
 
-	// #ifdef ESP
+	// #if (IS_ESP == 1)
 	__asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 
@@ -583,17 +583,6 @@ inline void update_fft_cons_valid(){
 	write_mem(dst, value_64);
 
 
-	// int time_var = 0;
-	// while(time_var<100) time_var++;
-	__asm__ volatile ("fence w, w");	
-}
-
-
-void update_fft_end(){
-	__asm__ volatile ("fence w, w");	//acquire semantics
-	void* dst = (void*)(fftHW_lmem+(EndFlag));
-	int64_t value_64 = 1;
-	write_mem(dst, value_64);
 	// int time_var = 0;
 	// while(time_var<100) time_var++;
 	__asm__ volatile ("fence w, w");	
@@ -658,7 +647,7 @@ inline uint32_t poll_fftdma_cons_rdy(){
 }
 
 inline void update_fftdma_cons_valid(){
-	// #ifdef ESP
+	// #if (IS_ESP == 1)
 	__asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 
@@ -752,7 +741,7 @@ inline uint32_t poll_vitdma_cons_rdy(){
 }
 
 inline void update_vitdma_cons_valid(){
-	// #ifdef ESP
+	// #if (IS_ESP == 1)
 	__asm__ volatile ("fence w, w");	//release semantics
 	// #endif
 
@@ -814,6 +803,61 @@ inline void update_vitdma_prod_valid(){
 	__asm__ volatile ("fence w, w");	//acquire semantics
 }
 #endif
+
+
+void update_fft_end(){
+	__asm__ volatile ("fence w, w");	//acquire semantics
+	void* dst = (void*)(fftHW_lmem+(EndFlag));
+	int64_t value_64 = 1;
+	write_mem(dst, value_64);
+	// int time_var = 0;
+	// while(time_var<100) time_var++;
+	__asm__ volatile ("fence w, w");	
+
+  while(!poll_fft_cons_rdy());
+  update_fft_cons_rdy();
+
+  update_fft_cons_valid();
+
+  while(!poll_fft_prod_valid());
+  update_fft_prod_valid();
+
+  update_fft_prod_rdy();
+}
+
+void update_fftdma_end_oneiter(){
+	__asm__ volatile ("fence w, w");
+	void* dst = (void*)(fftHW_lmem + fft_dma_offset + LOAD_STORE_FLAG_OFFSET);
+	int64_t value_64 = 2;
+	write_mem(dst, value_64);
+	__asm__ volatile ("fence w, w");	
+
+  // Wait for DMA (consumer) to be ready.
+  while(!poll_fftdma_cons_rdy());
+  // Reset flag for next iteration.
+  update_fftdma_cons_rdy();
+  update_fftdma_prod_rdy();
+
+  // Inform DMA (consumer) to start.
+  update_fftdma_cons_valid();
+}
+
+void update_vitdma_end_oneiter(){
+	__asm__ volatile ("fence w, w");
+	void* dst = (void*)(vitHW_lmem+vit_dma_offset + VIT_LOAD_STORE_FLAG_OFFSET);
+	int64_t value_64 = 2;
+	write_mem(dst, value_64);
+	__asm__ volatile ("fence w, w");	
+
+  // Wait for DMA (consumer) to be ready.
+  while(!poll_vitdma_cons_rdy());
+  // Reset flag for next iteration.
+  update_vitdma_cons_rdy();
+  update_vitdma_prod_rdy();
+
+  // Inform DMA (consumer) to start.
+  update_vitdma_cons_valid();
+}
 
 
 extern void descrambler(uint8_t* in, int psdusize, char* out_msg, uint8_t* ref, uint8_t *msg);
@@ -1047,6 +1091,8 @@ status_t init_rad_kernel(char* dict_fn)
 
   reset_fftdma_sync();
 
+  printf("Starting FFT DMA\n");
+
   if (ioctl(fftDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, fftDMA_desc)) {
     perror("IOCTL:");
     exit(EXIT_FAILURE);
@@ -1092,6 +1138,8 @@ status_t init_rad_kernel(char* dict_fn)
 	// Inform DMA (consumer) to start.
 	update_fftdma_cons_valid();
 
+  printf("Ending FFT DMA\n");
+
   fftDMA_desc.spandex_conf = spandex_config.spandex_reg;
 
   reset_fftdma_sync();
@@ -1100,6 +1148,8 @@ status_t init_rad_kernel(char* dict_fn)
     perror("IOCTL:");
     exit(EXIT_FAILURE);
   }
+
+  printf("Starting FFT DMA\n");
 
   // address to be used for all FFT input data streaming in from the sensor
   // input_rad_mem = &fftHW_lmem[fft_dma_offset + fft_dma_len + 2 * SYNC_VAR_SIZE];
@@ -1228,7 +1278,7 @@ status_t init_vit_kernel(char* dict_fn)
 
 #ifdef HW_VIT
   init_vit_parameters();
-  snprintf(VIT_DEVNAME, 128, "/dev/vitdodec_stratus.%u", use_device_number);
+  snprintf(VIT_DEVNAME, 128, "/dev/asi_vitdodec_stratus.%u", use_device_number);
   DEBUG(printf("Open Vit-Do-Decode device %s\n", VIT_DEVNAME));
   vitHW_fd = open(VIT_DEVNAME, O_RDWR, 0);
   if(vitHW_fd < 0) {
@@ -1310,6 +1360,8 @@ status_t init_vit_kernel(char* dict_fn)
   
   reset_vitdma_sync();
 
+  printf("Starting VIT DMA\n");
+
   if (ioctl(vitDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, vitDMA_desc)) {
     perror("IOCTL:");
     exit(EXIT_FAILURE);
@@ -1359,6 +1411,8 @@ status_t init_vit_kernel(char* dict_fn)
 	// Inform DMA (consumer) to start.
 	update_vitdma_cons_valid();
 
+  printf("Ending VIT DMA\n");
+
   vitDMA_desc.spandex_conf = spandex_config.spandex_reg;
 
   reset_vitdma_sync();
@@ -1367,6 +1421,8 @@ status_t init_vit_kernel(char* dict_fn)
     perror("IOCTL:");
     exit(EXIT_FAILURE);
   }
+
+  printf("Starting VIT DMA\n");
 #endif // if USE_VIT_SENSOR
 
 #endif

@@ -89,6 +89,13 @@ extern void update_fft_end();
 extern void update_vitdodec_end();
 #endif
 
+#ifdef USE_FFT_SENSOR
+extern void update_fftdma_end_oneiter();
+#endif
+#ifdef USE_VIT_SENSOR
+extern void update_vitdma_end_oneiter();
+#endif
+
 static inline uint64_t get_counter() {
     uint64_t t_end = 0;
 #ifndef __linux__
@@ -574,9 +581,20 @@ int main(int argc, char *argv[])
  #endif
   #ifdef HW_FFT
   update_fft_end();
+  printf("FFT ended\n");
   #endif
   #ifdef HW_VIT
   update_vitdodec_end();
+  printf("VIT ended\n");
+  #endif
+
+  #ifdef USE_FFT_SENSOR
+  update_fftdma_end_oneiter();
+  printf("FFT DMA ended\n");
+  #endif
+  #ifdef USE_VIT_SENSOR
+  update_vitdma_end_oneiter();
+  printf("VIT DMA ended\n");
   #endif
 
   /* All the trace/simulation-time has been completed -- Quitting... */

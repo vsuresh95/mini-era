@@ -4,10 +4,6 @@
 #ifndef __COH_FUNC__
 #define __COH_FUNC__
 
-#define ESP
-#define COH_MODE 0
-
-
 typedef union
 {
   struct
@@ -42,7 +38,7 @@ typedef union
 #define QUAUX(X) #X
 #define QU(X) QUAUX(X)
 
-#ifdef ESP
+#if (IS_ESP == 1)
 // ESP COHERENCE PROTOCOLS
 #define READ_CODE 0x0002B30B
 #define WRITE_CODE 0x0062B02B
@@ -73,7 +69,7 @@ typedef union
 // #define QUAUX(X) #X
 // #define QU(X) QUAUX(X)
 
-// #ifdef ESP
+// #if (IS_ESP == 1)
 // // ESP COHERENCE PROTOCOLS
 // #define READ_CODE 0x0002B30B
 // #define WRITE_CODE 0x0062B02B

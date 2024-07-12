@@ -9,6 +9,9 @@ ifdef DO_CROSS_COMPILATION
  EXE_EXTENSION=-RV
 endif
 
+COH_MODE ?= 0
+IS_ESP ?= 1
+
 ifdef COMPILE_TO_ESP
  $(info $$ESP_ROOT is [${ESP_ROOT}])
  #ESP_ROOT ?= $(realpath ../../esp)
@@ -37,6 +40,9 @@ endif
 #  -- ALWAYS use this one! --   ifdef CONFIG_ESP_INTERFACE
 CFLAGS += -DUSE_ESP_INTERFACE
 #   endif
+
+CFLAGS += -DCOH_MODE=$(COH_MODE)
+CFLAGS += -DIS_ESP=$(IS_ESP)
 
 SW_STR = -SW
 FA_STR =
