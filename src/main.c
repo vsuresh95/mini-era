@@ -320,7 +320,7 @@ int main(int argc, char *argv[])
 
   char cv_py_file[] = "../cv/keras_cnn/lenet.py";
 
-  printf("Doing initialization tasks...\n");
+  DEBUG(printf("Doing initialization tasks...\n"));
 #ifndef USE_SIM_ENVIRON
   /* Trace filename construction */
   /* char * trace_file = argv[1]; */
@@ -341,13 +341,13 @@ int main(int argc, char *argv[])
   //   printf("Error: the computer vision kernel couldn't be initialized properly.\n");
   //   return 1;
   // }
-  printf("Initializing the Radar kernel...\n");
+  DEBUG(printf("Initializing the Radar kernel...\n"));
   if (!init_rad_kernel(rad_dict))
   {
     printf("Error: the radar kernel couldn't be initialized properly.\n");
     return 1;
   }
-  printf("Initializing the Viterbi kernel...\n");
+  DEBUG(printf("Initializing the Viterbi kernel...\n"));
   if (!init_vit_kernel(vit_dict))
   {
     printf("Error: the Viterbi decoding kernel couldn't be initialized properly.\n");
@@ -419,7 +419,7 @@ int main(int argc, char *argv[])
   //printf("Program run time in milliseconds %f\n", (double) (stop.tv_sec - start.tv_sec) * 1000 + (double) (stop.tv_usec - start.tv_usec) / 1000);
  #endif // TIME
 
-  printf("Starting the main loop...\n");
+  DEBUG(printf("Starting the main loop...\n"));
   fflush(stdout);
   /* The input trace contains the per-epoch (time-step) input data */
  #ifdef TIME
@@ -581,24 +581,24 @@ int main(int argc, char *argv[])
  #endif
   #ifdef HW_FFT
   update_fft_end();
-  printf("FFT ended\n");
+  DEBUG(printf("FFT ended\n"));
   #endif
   #ifdef HW_VIT
   update_vitdodec_end();
-  printf("VIT ended\n");
+  DEBUG(printf("VIT ended\n"));
   #endif
 
   #ifdef USE_FFT_SENSOR
   update_fftdma_end_oneiter();
-  printf("FFT DMA ended\n");
+  DEBUG(printf("FFT DMA ended\n"));
   #endif
   #ifdef USE_VIT_SENSOR
   update_vitdma_end_oneiter();
-  printf("VIT DMA ended\n");
+  DEBUG(printf("VIT DMA ended\n"));
   #endif
 
   /* All the trace/simulation-time has been completed -- Quitting... */
-  printf("\nRun completed %u time steps\n\n", time_step);
+  DEBUG(printf("\nRun completed %u time steps\n\n", time_step));
 
   /* All the traces have been fully consumed. Quitting... */
   // closeout_cv_kernel();
@@ -608,6 +608,26 @@ int main(int argc, char *argv[])
   closeout_vit_kernel();
 #endif
 
+ #if defined(HW_FFT) && defined(HW_VIT)
+
+ #if (IS_ESP == 1 && COH_MODE == 0)
+ printf("Result: ERA Chaining MESI Radar = %lu\n", (iter_rad_cycles+exec_rad_cycles+post_exec_rad_cycles)/time_step);
+ printf("Result: ERA Chaining MESI Viterbi = %lu\n", (iter_vit_cycles+exec_vit_cycles+post_exec_vit_cycles)/time_step);
+ #elif (IS_ESP == 1 && COH_MODE == 1)
+ printf("Result: ERA Chaining DMA Radar = %lu\n", (iter_rad_cycles+exec_rad_cycles+post_exec_rad_cycles)/time_step);
+ printf("Result: ERA Chaining DMA Viterbi = %lu\n", (iter_vit_cycles+exec_vit_cycles+post_exec_vit_cycles)/time_step);
+ #elif (IS_ESP == 0 && COH_MODE == 2)
+ printf("Result: ERA Chaining Spandex Radar = %lu\n", (iter_rad_cycles+exec_rad_cycles+post_exec_rad_cycles)/time_step);
+ printf("Result: ERA Chaining Spandex Viterbi = %lu\n", (iter_vit_cycles+exec_vit_cycles+post_exec_vit_cycles)/time_step);
+ #endif
+
+ #else
+
+ printf("Result: ERA SW = %lu\n", (int64_t) (prog_end_time-prog_start-plan_control_cycles)/time_step);
+
+ #endif
+
+ #ifdef SUPER_VERBOSE
   #ifdef TIME
   {
     printf("\nProgram total execution time        %lu cycles\n", (int64_t) (prog_end_time-prog_start)/time_step);
@@ -642,8 +662,9 @@ int main(int argc, char *argv[])
 
   printf("\n");
 #endif // INT_TIME
+ #endif
 
   sleep(1);
-  printf("\nDone.\n");
+  // printf("\nDone.\n");
   return 0;
 }

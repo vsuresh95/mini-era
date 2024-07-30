@@ -884,7 +884,7 @@ status_t init_rad_kernel(char* dict_fn)
     printf("ERROR reading the number of Radar Dictionary sets and items per set\n");
     exit(-2);
   }
-  printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set);
+  DEBUG(printf("  There are %u dictionary sets of %u entries each\n", num_radar_samples_sets, radar_dict_items_per_set));
   the_radar_return_dict = (radar_dict_entry_t**)calloc(num_radar_samples_sets, sizeof(radar_dict_entry_t*));
   if (the_radar_return_dict == NULL) {
     printf("ERROR : Cannot allocate Radar Trace Dictionary memory space\n");
@@ -981,7 +981,7 @@ status_t init_rad_kernel(char* dict_fn)
  #elif (USE_FFT_ACCEL_TYPE == 2)
   snprintf(FFT_DEVNAME, 128, "/dev/audio_fft_stratus.%u", use_device_number);
  #endif /* USE_FFT_ACCEL_TYPE */
-  printf("Open device %s\n", FFT_DEVNAME);
+  DEBUG(printf("Open device %s\n", FFT_DEVNAME));
   #if (USE_FFT_FX == 64)
    DEBUG(printf(" typedef unsigned long long token_t\n"));
    DEBUG(printf(" typedef double native_t\n"));
@@ -1091,7 +1091,7 @@ status_t init_rad_kernel(char* dict_fn)
 
   reset_fftdma_sync();
 
-  printf("Starting FFT DMA\n");
+  DEBUG(printf("Starting FFT DMA\n"));
 
   if (ioctl(fftDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, fftDMA_desc)) {
     perror("IOCTL:");
@@ -1138,7 +1138,7 @@ status_t init_rad_kernel(char* dict_fn)
 	// Inform DMA (consumer) to start.
 	update_fftdma_cons_valid();
 
-  printf("Ending FFT DMA\n");
+  DEBUG(printf("Ending FFT DMA\n"));
 
   fftDMA_desc.spandex_conf = spandex_config.spandex_reg;
 
@@ -1149,7 +1149,7 @@ status_t init_rad_kernel(char* dict_fn)
     exit(EXIT_FAILURE);
   }
 
-  printf("Starting FFT DMA\n");
+  DEBUG(printf("Starting FFT DMA\n"));
 
   // address to be used for all FFT input data streaming in from the sensor
   // input_rad_mem = &fftHW_lmem[fft_dma_offset + fft_dma_len + 2 * SYNC_VAR_SIZE];
@@ -1190,7 +1190,7 @@ status_t init_vit_kernel(char* dict_fn)
     printf("ERROR reading the number of Viterbi Dictionary items\n");
     exit(-2);
   }    
-  printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items);
+  DEBUG(printf("  There are %u dictionary entries\n", num_viterbi_dictionary_items));
   the_viterbi_trace_dict = (vit_dict_entry_t*)calloc(num_viterbi_dictionary_items, sizeof(vit_dict_entry_t));
   if (the_viterbi_trace_dict == NULL) 
   {
@@ -1360,7 +1360,7 @@ status_t init_vit_kernel(char* dict_fn)
   
   reset_vitdma_sync();
 
-  printf("Starting VIT DMA\n");
+  DEBUG(printf("Starting VIT DMA\n"));
 
   if (ioctl(vitDMA_fd, AUDIO_DMA_STRATUS_IOC_ACCESS, vitDMA_desc)) {
     perror("IOCTL:");
@@ -1411,7 +1411,7 @@ status_t init_vit_kernel(char* dict_fn)
 	// Inform DMA (consumer) to start.
 	update_vitdma_cons_valid();
 
-  printf("Ending VIT DMA\n");
+  DEBUG(printf("Ending VIT DMA\n"));
 
   vitDMA_desc.spandex_conf = spandex_config.spandex_reg;
 
@@ -1422,7 +1422,7 @@ status_t init_vit_kernel(char* dict_fn)
     exit(EXIT_FAILURE);
   }
 
-  printf("Starting VIT DMA\n");
+  DEBUG(printf("Starting VIT DMA\n"));
 #endif // if USE_VIT_SENSOR
 
 #endif
